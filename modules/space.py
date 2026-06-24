@@ -13,25 +13,34 @@ from modules.settings import (latitudeValue, longitudeValue, zuluTime,
                               ERROR_FETCHING_DATA, NO_DATA_NOGPS, NO_ALERTS)
 import math
 
-trap_list_solarconditions = ("sun", "moon", "solar", "hfcond", "satpass", "howtall")
+trap_list_solarconditions = ("sun", "matahari", "moon", "bulan", "solar", "surya", "hfcond", "kondisihf", "satpass", "howtall", "ketinggian")
 
 def hf_band_conditions():
-    # ham radio HF band conditions
+    _cond_map = {"Good": "Bagus", "Fair": "Lumayan", "Poor": "Buruk", "Closed": "Tutup"}
     hf_cond = ""
     signalnoise = ""
     band_cond = requests.get("https://www.hamqsl.com/solarxml.php", timeout=urlTimeoutSeconds)
     if(band_cond.ok):
         solarxml = xml.dom.minidom.parseString(band_cond.text)
+        day_lines = []
+        night_lines = []
         for i in solarxml.getElementsByTagName("band"):
-            hf_cond += i.getAttribute("time")[0]+i.getAttribute("name") +"="+str(i.childNodes[0].data)+"\n"
-        hf_cond = hf_cond[:-1] # remove the last newline
+            waktu = i.getAttribute("time")
+            band  = i.getAttribute("name")
+            val   = str(i.childNodes[0].data)
+            val_id = _cond_map.get(val, val)
+            if waktu == "day":
+                day_lines.append(f"{band}={val_id}")
+            else:
+                night_lines.append(f"{band}={val_id}")
         for i in solarxml.getElementsByTagName("solardata"):
             signalnoise = i.getElementsByTagName("signalnoise")[0].childNodes[0].data
-        hf_cond += "\nQRN:" + signalnoise
+        hf_cond  = "🌞 Siang: " + " ".join(day_lines) + "\n"
+        hf_cond += "🌙 Malam: " + " ".join(night_lines) + "\n"
+        hf_cond += "📡 Noise: " + signalnoise
     else:
         logger.error("Solar: Error fetching HF band conditions")
         hf_cond = ERROR_FETCHING_DATA
-    
     return hf_cond
 
 def solar_conditions():
@@ -58,7 +67,7 @@ def solar_conditions():
                 solar_flux = i.getElementsByTagName("solarflux")[0].childNodes[0].data
                 sunspots = i.getElementsByTagName("sunspots")[0].childNodes[0].data
                 signalnoise = i.getElementsByTagName("signalnoise")[0].childNodes[0].data
-            solar_cond = "A: " + solar_a_index + "\nK: " + solar_k_index + "\nSunspots: " + sunspots + "\nX-Ray Flux: " + solar_xray + "\nSolar Flux: " + solar_flux + "\nNoise: " + signalnoise
+            solar_cond = "☀️ Flux: " + solar_flux + " • Sunspot: " + sunspots + "\n⚡ X-Ray: " + solar_xray + "\n📡 A=" + solar_a_index + " K=" + solar_k_index + " Noise=" + signalnoise
         else:
             logger.error("Solar: Error fetching solar conditions")
             solar_cond = ERROR_FETCHING_DATA
@@ -126,7 +135,7 @@ def get_noaa_scales_summary():
 
             def format_entry(label, entry):
                 if not entry:
-                    return f"{label}: No data"
+                    return f"{label}: Tidak ada data"
                 g = entry.get("G", {})
                 s = entry.get("S", {})
                 r = entry.get("R", {})
@@ -134,24 +143,31 @@ def get_noaa_scales_summary():
             
                 # Only show storm if it's happening
                 if s.get("Text") and s.get("Text") != "none":
-                    parts.append(f"Currently:{s.get('Text')} (S:{s.get('Scale', 'N/A')})")
+                    parts.append(f"Badai: {s.get('Text')} (S:{s.get('Scale', 'N/A')})")
             
                 # Only show blackout if it's not "none" or scale is not 0
                 if r.get("Text") and r.get("Text") != "none" and r.get("Scale") not in [None, "0", 0]:
-                    parts.append(f"RF Blackout:{r.get('Text')} (R:{r.get('Scale', 'N/A')})")
+                    parts.append(f"Blackout RF: {r.get('Text')} (R:{r.get('Scale', 'N/A')})")
             
                 return "\n".join(parts)
 
             output = []
-            #output.append(format_entry("Latest Observed", latest_entry))
-            output.append(format_entry("24hrMax:", max_g_today))
-            output.append(format_entry("Predicted:", predicted_g))
+            #output.append(format_entry("Terkini", latest_entry))
+            output.append(format_entry("Maks 24j:", max_g_today))
+            output.append(format_entry("Prediksi:", predicted_g))
             return "\n".join(output)
         else:
             return NO_ALERTS
     except Exception as e:
         logger.warning(f"Error fetching services.swpc.noaa.gov: {e}")
         return ERROR_FETCHING_DATA
+
+_HARI = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']
+_BULAN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+
+def _fmt_indo(dt):
+    return f"{_HARI[dt.weekday()]} {dt.day} {_BULAN[dt.month]} {dt.strftime('%H:%M')}"
+
 
 def get_sun(lat=0, lon=0):
     # get sunrise and sunset times using callers location or default
@@ -182,26 +198,26 @@ def get_sun(lat=0, lon=0):
     local_sunrise = ephem.localtime(obs.next_rising(sun))
     local_sunset = ephem.localtime(obs.next_setting(sun))
     if zuluTime:
-        sun_table['rise_time'] = local_sunrise.strftime('%a %d %H:%M')
-        sun_table['set_time'] = local_sunset.strftime('%a %d %H:%M')
+        sun_table['rise_time'] = _fmt_indo(local_sunrise)
+        sun_table['set_time'] = _fmt_indo(local_sunset)
     else:
-        sun_table['rise_time'] = local_sunrise.strftime('%a %d %I:%M%p')
-        sun_table['set_time'] = local_sunset.strftime('%a %d %I:%M%p')
+        sun_table['rise_time'] = _fmt_indo(local_sunrise)
+        sun_table['set_time'] = _fmt_indo(local_sunset)
     
     # if sunset is before sunrise, then data will be for tomorrow format sunset first and sunrise second
     if local_sunset < local_sunrise:
-        sun_data = "SunSet: " + sun_table['set_time'] + "\nRise: " + sun_table['rise_time']
+        sun_data = "☀️ Terbenam: " + sun_table['set_time'] + "\n🌅 Terbit: " + sun_table['rise_time']
     else:
-        sun_data = "SunRise: " + sun_table['rise_time'] + "\nSet: " + sun_table['set_time']
+        sun_data = "🌅 Terbit: " + sun_table['rise_time'] + "\n☀️ Terbenam: " + sun_table['set_time']
 
-    sun_data += "\nDaylight: " + str((local_sunset - local_sunrise).seconds // 3600) + "h " + str(((local_sunset - local_sunrise).seconds // 60) % 60) + "m"
+    sun_data += "\n⏱️ Siang: " + str((local_sunset - local_sunrise).seconds // 3600) + "j " + str(((local_sunset - local_sunrise).seconds // 60) % 60) + "m"
     
     if sun_table['altitude'] > 0:
-        sun_data += "\nRemaining: " + str((local_sunset - datetime.now()).seconds // 3600) + "h " + str(((local_sunset - datetime.now()).seconds // 60) % 60) + "m"
+        sun_data += "\n⏳ Sisa siang: " + str((local_sunset - datetime.now()).seconds // 3600) + "j " + str(((local_sunset - datetime.now()).seconds // 60) % 60) + "m"
     
-    sun_data += "\nAzimuth: " + str('{0:.2f}'.format(sun_table['azimuth'] * 180 / ephem.pi)) + "°"
+    sun_data += "\n🧭 Azimut: " + str('{0:.2f}'.format(sun_table['azimuth'] * 180 / ephem.pi)) + "°"
     if sun_table['altitude'] > 0:
-        sun_data += "\nAltitude: " + str('{0:.2f}'.format(sun_table['altitude'] * 180 / ephem.pi)) + "°"
+        sun_data += "\n📐 Elevasi: " + str('{0:.2f}'.format(sun_table['altitude'] * 180 / ephem.pi)) + "°"
     return sun_data
 
 def get_moon(lat=0, lon=0):
@@ -221,21 +237,21 @@ def get_moon(lat=0, lon=0):
     illum = moon.phase  # 0 = new, 50 = first/last quarter, 100 = full
     
     if illum < 1.0:
-        moon_phase = 'New Moon🌑'
+        moon_phase = 'Bulan Baru 🌑'
     elif illum < 49:
-        moon_phase = 'Waxing Crescent 🌒'
+        moon_phase = 'Sabit Awal 🌒'
     elif 49 <= illum < 51:
-        moon_phase = 'First Quarter 🌓'
+        moon_phase = 'Kuartal Pertama 🌓'
     elif illum < 99:
-        moon_phase = 'Waxing Gibbous 🌔'
+        moon_phase = 'Cembung Awal 🌔'
     elif illum >= 99:
-        moon_phase = 'Full Moon🌕'
+        moon_phase = 'Bulan Purnama 🌕'
     elif illum > 51:
-        moon_phase = 'Waning Gibbous 🌖'
+        moon_phase = 'Cembung Akhir 🌖'
     elif 51 >= illum > 49:
-        moon_phase = 'Last Quarter 🌗'
+        moon_phase = 'Kuartal Akhir 🌗'
     else:
-        moon_phase = 'Waning Crescent 🌘'
+        moon_phase = 'Sabit Akhir 🌘'
     
     moon_table['phase'] = moon_phase
     moon_table['illumination'] = moon.phase
@@ -245,29 +261,29 @@ def get_moon(lat=0, lon=0):
     local_moonrise = ephem.localtime(obs.next_rising(moon))
     local_moonset = ephem.localtime(obs.next_setting(moon))
     if zuluTime:
-        moon_table['rise_time'] = local_moonrise.strftime('%a %d %H:%M')
-        moon_table['set_time'] = local_moonset.strftime('%a %d %H:%M')
+        moon_table['rise_time'] = _fmt_indo(local_moonrise)
+        moon_table['set_time'] = _fmt_indo(local_moonset)
     else:
-        moon_table['rise_time'] = local_moonrise.strftime('%a %d %I:%M%p')
-        moon_table['set_time'] = local_moonset.strftime('%a %d %I:%M%p')
+        moon_table['rise_time'] = _fmt_indo(local_moonrise)
+        moon_table['set_time'] = _fmt_indo(local_moonset)
 
     local_next_full_moon = ephem.localtime(ephem.next_full_moon((obs.date)))
     local_next_new_moon = ephem.localtime(ephem.next_new_moon((obs.date)))
     if zuluTime:
-        moon_table['next_full_moon'] = local_next_full_moon.strftime('%a %b %d %H:%M')
-        moon_table['next_new_moon'] = local_next_new_moon.strftime('%a %b %d %H:%M')
+        moon_table['next_full_moon'] = _fmt_indo(local_next_full_moon)
+        moon_table['next_new_moon'] = _fmt_indo(local_next_new_moon)
     else:
-        moon_table['next_full_moon'] = local_next_full_moon.strftime('%a %b %d %I:%M%p')
-        moon_table['next_new_moon'] = local_next_new_moon.strftime('%a %b %d %I:%M%p')
+        moon_table['next_full_moon'] = _fmt_indo(local_next_full_moon)
+        moon_table['next_new_moon'] = _fmt_indo(local_next_new_moon)
 
-    moon_data = "MoonRise: " + moon_table['rise_time'] + "\nSet: " + moon_table['set_time'] + \
-        "\nPhase: " + moon_table['phase'] + " @: " + str('{0:.2f}'.format(moon_table['illumination'])) + "%" \
-        + "\nFull: " + moon_table['next_full_moon'] + "\nNew: " + moon_table['next_new_moon']
+    moon_data = "🌙 Terbit: " + moon_table['rise_time'] + "\n🌑 Terbenam: " + moon_table['set_time'] + \
+        "\n🌓 Fase: " + moon_table['phase'] + " (" + str('{0:.2f}'.format(moon_table['illumination'])) + "%)" \
+        + "\n🌕 Purnama: " + moon_table['next_full_moon'] + "\n🌑 Bulan Baru: " + moon_table['next_new_moon']
     
     # if moon is in the sky, add azimuth and altitude
     if moon_table['altitude'] > 0:
-        moon_data += "\nAz: " + str('{0:.2f}'.format(moon_table['azimuth'] * 180 / ephem.pi)) + "°" + \
-            "\nAlt: " + str('{0:.2f}'.format(moon_table['altitude'] * 180 / ephem.pi)) + "°"
+        moon_data += "\n🧭 Azimut: " + str('{0:.2f}'.format(moon_table['azimuth'] * 180 / ephem.pi)) + "°" + \
+            "\n📐 Elevasi: " + str('{0:.2f}'.format(moon_table['altitude'] * 180 / ephem.pi)) + "°"
     
     return moon_data
 
@@ -295,9 +311,9 @@ def getNextSatellitePass(satellite, lat=0, lon=0):
                 pass_time = pass_json['passes'][0]['startUTC']
                 pass_duration = pass_json['passes'][0]['duration']
                 pass_maxEl = pass_json['passes'][0]['maxEl']
-                pass_rise_time = datetime.fromtimestamp(pass_time).strftime('%a %d %I:%M%p')
+                pass_rise_time = datetime.fromtimestamp(pass_time).strftime('%d/%m %H:%M')
                 pass_startAzCompass = pass_json['passes'][0]['startAzCompass']
-                pass_set_time = datetime.fromtimestamp(pass_time + pass_duration).strftime('%a %d %I:%M%p')
+                pass_set_time = datetime.fromtimestamp(pass_time + pass_duration).strftime('%d/%m %H:%M')
                 pass__endAzCompass = pass_json['passes'][0]['endAzCompass']
                 pass_data = f"{satname} @{pass_rise_time} Az: {pass_startAzCompass} for{getPrettyTime(pass_duration)}, MaxEl: {pass_maxEl}° Set @{pass_set_time} Az: {pass__endAzCompass}"
             elif pass_json['info']['passescount'] == 0:

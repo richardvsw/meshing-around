@@ -85,113 +85,117 @@ def get_wx_meteo(lat=0, lon=0, unit=0):
 			wind_direction = "N"
 
 	# create a weather report
+	# get area name via reverse geocode
+	area_name = ""
+	try:
+		from geopy.geocoders import Nominatim
+		geolocator = Nominatim(user_agent="mesh-bot")
+		_loc = geolocator.reverse(f"{lat}, {lon}")
+		_addr = _loc.raw.get("address", {})
+		_city = _addr.get("city") or _addr.get("town") or _addr.get("regency") or _addr.get("county", "")
+		_state = _addr.get("state", "")
+		area_name = ", ".join(filter(None, [_city, _state]))
+	except Exception:
+		pass
+
 	weather_report = ""
+	if area_name:
+		weather_report += f"\U0001f4cd {area_name}\n"
 	for i in range(forecastDays):
-		if str(i + 1) == "1":
-			weather_report += "Today, "
-		elif str(i + 1) == "2":
-			weather_report += "Tomorrow, "
+		if i == 0:
+			day_label = "Hari ini"
+		elif i == 1:
+			day_label = "Besok"
 		else:
-			weather_report += "Futurecast: "
-		
+			day_label = "Lusa"
+
 		# report weather from WMO Weather interpretation codes (WW)
 		code_string = ""
 		if daily_weather_code[i] == 0:
-			code_string = "Clear sky"
+			code_string = "Cerah ☀️"
 		elif daily_weather_code[i] == 1:
-			code_string = "Mostly Cloudy"
+			code_string = "Kebanyakan berawan ⛅"
 		elif daily_weather_code[i] == 2:
-			code_string = "Partly Cloudy"
+			code_string = "Agak berawan 🌤️"
 		elif daily_weather_code[i] == 3:
-			code_string = "Overcast"
+			code_string = "Mendung 🌥️"
 		elif daily_weather_code[i] == 5:
-			code_string = "Haze"
+			code_string = "Berkabut tipis 🌫️"
 		elif daily_weather_code[i] == 10:
-			code_string = "Mist"
+			code_string = "Berkabut 🌫️"
 		elif daily_weather_code[i] == 45:
-			code_string = "Fog"
+			code_string = "Kabut tebal 🌫️"
 		elif daily_weather_code[i] == 48:
-			code_string = "Freezing Fog"
+			code_string = "Kabut beku 🌫️"
 		elif daily_weather_code[i] == 51:
-			code_string = "Drizzle: Light"
+			code_string = "Gerimis tipis 🌦️"
 		elif daily_weather_code[i] == 53:
-			code_string = "Drizzle: Moderate"
+			code_string = "Gerimis sedang 🌦️"
 		elif daily_weather_code[i] == 55:
-			code_string = "Drizzle: Heavy"
+			code_string = "Gerimis lebat 🌧️"
 		elif daily_weather_code[i] == 56:
-			code_string = "Freezing Drizzle: Light"
+			code_string = "Gerimis beku tipis"
 		elif daily_weather_code[i] == 57:
-			code_string = "Freezing Drizzle: Moderate"
+			code_string = "Gerimis beku sedang"
 		elif daily_weather_code[i] == 61:
-			code_string = "Rain: Slight"
+			code_string = "Hujan ringan 🌧️"
 		elif daily_weather_code[i] == 63:
-			code_string = "Rain: Moderate"
+			code_string = "Hujan sedang 🌧️"
 		elif daily_weather_code[i] == 65:
-			code_string = "Rain: Heavy"
+			code_string = "Hujan lebat 🌧️"
 		elif daily_weather_code[i] == 66:
-			code_string = "Freezing Rain: Light"
+			code_string = "Hujan es tipis"
 		elif daily_weather_code[i] == 67:
-			code_string = "Freezing Rain: Dense"
+			code_string = "Hujan es lebat"
 		elif daily_weather_code[i] == 71:
-			code_string = "Snow: Light"
+			code_string = "Salju tipis ❄️"
 		elif daily_weather_code[i] == 73:
-			code_string = "Snow: Moderate"
+			code_string = "Salju sedang ❄️"
 		elif daily_weather_code[i] == 75:
-			code_string = "Snow: Heavy"
+			code_string = "Salju lebat ❄️"
 		elif daily_weather_code[i] == 77:
-			code_string = "Snow Grains"
+			code_string = "Butiran salju ❄️"
 		elif daily_weather_code[i] == 78:
-			code_string = "Ice Crystals"
+			code_string = "Kristal es"
 		elif daily_weather_code[i] == 79:
-			code_string = "Ice Pellets"
+			code_string = "Pelet es"
 		elif daily_weather_code[i] == 80:
-			code_string = "Rain showers: Slight"
+			code_string = "Hujan shower ringan 🌦️"
 		elif daily_weather_code[i] == 81:
-			code_string = "Rain showers: Moderate"
+			code_string = "Hujan shower sedang 🌧️"
 		elif daily_weather_code[i] == 82:
-			code_string = "Rain showers: Heavy"
+			code_string = "Hujan shower lebat 🌧️"
 		elif daily_weather_code[i] == 85:
-			code_string = "Snow showers"
+			code_string = "Shower salju"
 		elif daily_weather_code[i] == 86:
-			code_string = "Snow showers: Heavy"
+			code_string = "Shower salju lebat"
 		elif daily_weather_code[i] == 95:
-			code_string = "Thunderstorm"
+			code_string = "Badai petir ⛈️"
 		elif daily_weather_code[i] == 96:
-			code_string = "Hailstorm"
+			code_string = "Hujan es ⛈️"
 		elif daily_weather_code[i] == 97:
-			code_string = "Thunderstorm Heavy"
+			code_string = "Badai petir lebat ⛈️"
 		elif daily_weather_code[i] == 99:
-			code_string = "Hailstorm Heavy"
+			code_string = "Hujan es lebat ⛈️"
 
-		weather_report += "Cond: " + code_string + ". "
-
-		# report temperature
+		# build compact line
 		if unit == 0:
-			weather_report += "High: " + str(int(round(daily_temperature_2m_max[i]))) + "F, with a low of " + str(int(round(daily_temperature_2m_min[i]))) + "F. "
+			temp_str = f"{int(round(daily_temperature_2m_min[i]))}°F–{int(round(daily_temperature_2m_max[i]))}°F"
 		else:
-			weather_report += "High: " + str(int(round(daily_temperature_2m_max[i]))) + "C, with a low of " + str(int(round(daily_temperature_2m_min[i]))) + "C. "
+			temp_str = f"{int(round(daily_temperature_2m_min[i]))}°C–{int(round(daily_temperature_2m_max[i]))}°C"
 
-		# check for precipitation
-		if daily_precipitation_hours[i] > 0:
-			if unit == 0:
-				weather_report += "Precip: " + str(round(daily_precipitation_probability_max[i],2)) + "in, in " + str(round(daily_precipitation_hours[i],2)) + " hours. "
-			else:
-				weather_report += "Precip: " + str(round(daily_precipitation_probability_max[i],2)) + "mm, in " + str(round(daily_precipitation_hours[i],2)) + " hours. "
-		else:
-			weather_report += "No Precip. "
+		rain_str = ""
+		if daily_precipitation_probability_max[i] > 0:
+			rain_str = f" • Hujan {int(daily_precipitation_probability_max[i])}%"
 
-		# check for wind
 		if daily_wind_speed_10m_max[i] > 0:
-			if unit == 0:
-				weather_report += "Wind: " + str(int(round(daily_wind_speed_10m_max[i]))) + "mph, gusts up to " + str(int(round(daily_wind_gusts_10m_max[i]))) + "mph from:" + wind_direction + "."
-			else:
-				weather_report += "Wind: " + str(int(round(daily_wind_speed_10m_max[i]))) + "kph, gusts up to " + str(int(round(daily_wind_gusts_10m_max[i]))) + "kph from:" + wind_direction + "."
+			wspd = int(round(daily_wind_speed_10m_max[i]))
+			wunit = "mph" if unit == 0 else "kph"
+			wind_str = f" • Angin {wspd} {wunit} dari {wind_direction}"
 		else:
-			weather_report += "No Wind\n"
+			wind_str = " • Angin tenang"
 
-		# add a new line for the next day
-		if i < forecastDays - 1:
-			weather_report += "\n"
+		weather_report += f"{day_label}: {code_string} {temp_str}{rain_str}{wind_str}\n"
 
 	return weather_report
 
@@ -235,6 +239,6 @@ def get_flood_openmeteo(lat=0, lon=0):
 	
 	# create a flood report
 	flood_report = ""
-	flood_report += "River Discharge: " + str(daily_river_discharge) + "m3/s"
+	flood_report += "Debit sungai: " + str(daily_river_discharge) + "m3/s"
 
 	return flood_report

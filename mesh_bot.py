@@ -29,6 +29,7 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     default_commands = {
     "ack": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "ask:": lambda: handle_llm(message_from_id, channel_number, deviceID, message, publicChannel),
+    "tanya": lambda: handle_llm(message_from_id, channel_number, deviceID, message, publicChannel),
     "askai": lambda: handle_llm(message_from_id, channel_number, deviceID, message, publicChannel),
     "bannode": lambda: handle_bbsban(message, message_from_id, isDM),
     "battleship": lambda: handleBattleship(message, message_from_id, deviceID),
@@ -56,18 +57,24 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "dx": lambda: handledxcluster(message, message_from_id, deviceID),
     "ea": lambda: handle_emergency_alerts(message, message_from_id, deviceID),
     "echo": lambda: handle_echo(message, message_from_id, deviceID, isDM, channel_number),
+    "balik": lambda: handle_echo(message, message_from_id, deviceID, isDM, channel_number),
+    "ulang": lambda: handle_echo(message, message_from_id, deviceID, isDM, channel_number),
     "ealert": lambda: handle_emergency_alerts(message, message_from_id, deviceID),
     "earthquake": lambda: handleEarthquake(message, message_from_id, deviceID),
     "email:": lambda: handle_email(message_from_id, message),
     "games": lambda: gamesCmdList,
+    "main": lambda: gamesCmdList,
     "globalthermonuclearwar": lambda: handle_gTnW(),
     "golfsim": lambda: handleGolf(message, message_from_id, deviceID),
     "hamtest": lambda: handleHamtest(message, message_from_id, deviceID),
     "hangman": lambda: handleHangman(message, message_from_id, deviceID),
     "hfcond": hf_band_conditions,
+    "kondisihf": hf_band_conditions,
     "history": lambda: handle_history(message, message_from_id, deviceID, isDM),
     "howfar": lambda: handle_howfar(message, message_from_id, deviceID, isDM),
+    "jarak": lambda: handle_howfar(message, message_from_id, deviceID, isDM),
     "howtall": lambda: handle_howtall(message, message_from_id, deviceID, isDM),
+    "ketinggian": lambda: handle_howtall(message, message_from_id, deviceID, isDM),
     "item": lambda: handle_inventory(message, message_from_id, deviceID),
     "itemadd": lambda: handle_inventory(message, message_from_id, deviceID),
     "itemlist": lambda: handle_inventory(message, message_from_id, deviceID),
@@ -85,23 +92,42 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "cartremove": lambda: handle_inventory(message, message_from_id, deviceID),
     "cartsell": lambda: handle_inventory(message, message_from_id, deviceID),
     "joke": lambda: tell_joke(message_from_id),
+    "lelucon": lambda: tell_joke(message_from_id),
+    "humor": lambda: tell_joke(message_from_id),
     "latest": lambda: get_newsAPI(message, message_from_id, deviceID, isDM),
     "leaderboard": lambda: get_mesh_leaderboard(message, message_from_id, deviceID),
+    "peringkat": lambda: get_mesh_leaderboard(message, message_from_id, deviceID),
     "lemonstand": lambda: handleLemonade(message, message_from_id, deviceID),
     "lheard": lambda: handle_lheard(message, message_from_id, deviceID, isDM),
+    "info": lambda: handle_lheard(message, message_from_id, deviceID, isDM),
+    "radar": lambda: handle_lheard(message, message_from_id, deviceID, isDM),
+    "daftar": lambda: handle_lheard(message, message_from_id, deviceID, isDM),
     "map": lambda: mapHandler(message_from_id, deviceID, channel_number, message, snr, rssi, hop),
     "mastermind": lambda: handleMmind(message, message_from_id, deviceID),
     "messages": lambda: handle_messages(message, deviceID, channel_number, msg_history, publicChannel, isDM),
+    "arsip": lambda: handle_messages(message, deviceID, channel_number, msg_history, publicChannel, isDM),
     "moon": lambda: handle_moon(message_from_id, deviceID, channel_number),
     "motd": lambda: handle_motd(message, message_from_id, isDM),
+    "pesan": lambda: handle_motd(message, message_from_id, isDM),
     "mwx": lambda: handle_mwx(message_from_id, deviceID, channel_number),
     "ping": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
+    "sinyal": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
+    "ketuk": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
+    "coba": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "pinging": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "pong": lambda: "🏓PING!!🛜",
     "q:": lambda: quizHandler(message, message_from_id, deviceID),
     "quiz": lambda: quizHandler(message, message_from_id, deviceID),
     "readnews": lambda: handleNews(message_from_id, deviceID, message, isDM),
     "readrss": lambda: get_rss_feed(message),
+    "berita": lambda: get_rss_feed(message),
+    "hargabbm": lambda: get_bbm_prices(message, message_from_id, deviceID),
+    "bbmharga": lambda: get_bbm_prices(message, message_from_id, deviceID),
+    "kursrupiah": lambda: get_kurs_rupiah(message),
+    "kurs": lambda: get_kurs_rupiah(message),
+    "fifa2026": lambda: get_fifa2026(message),
+    "fifa": lambda: get_fifa2026(message),
+
     "riverflow": lambda: handle_riverFlow(message, message_from_id, deviceID),
     "rlist": lambda: handle_repeaterQuery(message_from_id, deviceID, channel_number),
     "satpass": lambda: handle_satpass(message_from_id, deviceID, message),
@@ -110,10 +136,13 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "sitrep": lambda: handle_lheard(message, message_from_id, deviceID, isDM),
     "sms:": lambda: handle_sms(message_from_id, message),
     "solar": lambda: drap_xray_conditions() + "\n" + solar_conditions() + "\n" + get_noaa_scales_summary(),
+    "surya": lambda: drap_xray_conditions() + "\n" + solar_conditions() + "\n" + get_noaa_scales_summary(),
     "sun": lambda: handle_sun(message_from_id, deviceID, channel_number),
+    "matahari": lambda: handle_sun(message_from_id, deviceID, channel_number),
     "survey": lambda: surveyHandler(message, message_from_id, deviceID),
     "s:": lambda: surveyHandler(message, message_from_id, deviceID),
     "sysinfo": lambda: sysinfo(message, message_from_id, deviceID, isDM),
+    "infosistem": lambda: sysinfo(message, message_from_id, deviceID, isDM),
     "test": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "testing": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "tictactoe": lambda: handleTicTacToe(message, message_from_id, deviceID),
@@ -123,10 +152,17 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "verse": lambda: read_verse(),
     "videopoker": lambda: handleVideoPoker(message, message_from_id, deviceID),
     "whereami": lambda: handle_whereami(message_from_id, deviceID, channel_number),
+    "dimana": lambda: handle_whereami(message_from_id, deviceID, channel_number),
+    "lokasi": lambda: handle_whereami(message_from_id, deviceID, channel_number),
     "whoami": lambda: handle_whoami(message_from_id, deviceID, hop, snr, rssi, pkiStatus),
+    "siapa": lambda: handle_whoami(message_from_id, deviceID, hop, snr, rssi, pkiStatus),
+    "akulah": lambda: handle_whoami(message_from_id, deviceID, hop, snr, rssi, pkiStatus),
     "whois": lambda: handle_whois(message, deviceID, channel_number, message_from_id),
     "wiki": lambda: handle_wiki(message, isDM),
+    "cari": lambda: handle_wiki(message, isDM),
     "wx": lambda: handle_wxc(message_from_id, deviceID, 'wx'),
+    "cuaca": lambda: handle_wxc(message_from_id, deviceID, 'wx'),
+    "weather": lambda: handle_wxc(message_from_id, deviceID, 'wx'),
     "wxa": lambda: handle_wxalert(message_from_id, deviceID, message),
     "wxalert": lambda: handle_wxalert(message_from_id, deviceID, message),
     "x:": lambda: handleShellCmd(message, message_from_id, channel_number, isDM, deviceID),
@@ -188,11 +224,38 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     return bot_response
 
 def handle_cmd(message, message_from_id, deviceID):
-    # why CMD? its just a command list. a terminal would normally use "Help"
-    # I didnt want to invoke the word "help" in Meshtastic due to its possible emergency use
-    if " " in message and message.split(" ")[1] in trap_list:
-        return "🤖 just use the commands directly in chat"
-    return help_message
+    # Command list with eng/indo aliases, 3 per message
+    CMDS = [
+        ("!ping",          "Cek apakah bot online"),
+        ("!siapa",         "Info node kamu (ID, nama, sinyal)"),
+        ("!dimana",        "Lokasi GPS kamu (kota/daerah terdekat)"),
+        ("!jarak",         "Catat jarak tempuh dari posisi terakhir. Panggil lagi setelah bergerak untuk lihat hasilnya"),
+        ("!cuaca",         "Cuaca sekarang di lokasi kamu"),
+        ("!ketinggian",    "Estimasi ketinggian dari panjang bayangan"),
+        ("!pesan",         "Tampilkan pesan harian"),
+        ("!daftar",        "Daftar node yang terdengar di mesh"),
+        ("!peringkat",     "Ranking node (terjauh, terbanyak relay)"),
+        ("!infosistem",    "Info sistem bot (CPU, RAM, uptime)"),
+        ("!bulan",         "Fase bulan hari ini"),
+        ("!matahari",      "Waktu matahari terbit & terbenam"),
+        ("!surya",         "Kondisi solar flux"),
+        ("!lelucon",       "Minta joke acak"),
+        ("!tanya <pertanyaan>", "Tanya AI (dijawab lewat DM)"),
+        ("!cari <kata>",   "Cari di Wikipedia"),
+        ("!berita",        "Baca headline berita terbaru"),
+        ("!hargabbm",      "Cek harga BBM per provinsi"),
+        ("!kursrupiah",    "Kurs rupiah vs mata uang asing"),
+        ("!fifa2026",      "Jadwal & skor FIFA World Cup 2026"),
+    ]
+    CHUNK = 3
+    groups = [CMDS[i:i+CHUNK] for i in range(0, len(CMDS), CHUNK)]
+    total = len(groups)
+    for idx, group in enumerate(groups, 1):
+        lines = [f"{cmd} — {desc}" for cmd, desc in group]
+        msg = "\n".join(lines)
+        send_message(msg, 0, message_from_id, deviceID)
+        import time as _time; _time.sleep(2)
+    return ""
 
 def isPlayingGame(message_from_id):
     global gameTrackers
@@ -261,7 +324,7 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
     type = ''
 
     if "ping" in message.lower():
-        msg = "🏓PONG"
+        msg = random.choice(["🏓 Nyambung bro!", "🏓 Sinyal ada nih!", "🏓 Waduh, ping-mu nyampe juga ternyata!", "🏓 Hei, masih hidup nih!"])
         type = "🏓PING"
     elif "test" in message.lower() or "testing" in message.lower():
         msg = random.choice(["🎙Testing 1,2,3", "🎙Testing",\
@@ -278,21 +341,31 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
     else:
         msg = "🔊 Can you hear me now?"
 
-    # append SNR/RSSI or hop info
-    if hop.startswith("Gateway") or hop.startswith("MQTT"):
-        msg += " [GW]"
-    elif hop.startswith("Direct"):
-        msg += " [RF]"
+    # build route display
+    sender_name = get_name_from_number(message_from_id, "short", deviceID)
+    bot_name = get_name_from_number(myNodeNum, "short", deviceID)
+    hop_clean = hop.replace("Gateway","").replace("Direct","").replace("MQTT","").strip()
+    if "MQTT" in hop or "Gateway" in hop:
+        route = sender_name + " -[MQTT]-> " + bot_name
+    elif "Direct" in hop or "RF" in hop:
+        route = sender_name + " -[RF langsung]-> " + bot_name
     else:
-        #flood
-        msg += " [F]"
-    
-    if (float(snr) != 0 or float(rssi) != 0) and "Hop" not in hop:
-        msg += f"\nSNR:{snr} RSSI:{rssi}"
-    elif "Hop" in hop:
-        # janky, remove the words Gateway or MQTT if present
-        hop = hop.replace("Gateway", "").replace("Direct", "").replace("MQTT", "").strip()
-        msg += f"\n{hop} "
+        route = sender_name + " -[" + hop_clean + "]-> " + bot_name
+    msg += "\n🗺 " + route
+    if float(snr) != 0 or float(rssi) != 0:
+        msg += "\n📶 SNR:" + str(snr) + " RSSI:" + str(rssi)
+    # node count + current WIB time
+    try:
+        from datetime import datetime, timezone, timedelta
+        _wib = datetime.now(timezone(timedelta(hours=7)))
+        _iface = globals().get(f'interface{deviceID}')
+        _nodes = list(_iface.nodes.values()) if _iface and _iface.nodes else []
+        _total = len(_nodes)
+        _cutoff = datetime.now(timezone.utc).timestamp() - 3600
+        _online = sum(1 for n in _nodes if n.get('lastHeard', 0) > _cutoff)
+        msg += f"\n👥 {_online}/{_total} node online • 🕐 {_wib.strftime('%H:%M')} WIB"
+    except Exception:
+        pass
 
     if "@" in message:
         msg = msg + " @" + message.split("@")[1]
@@ -390,16 +463,39 @@ def handle_emergency(message_from_id, deviceID, message):
         return my_settings.EMERGENCY_RESPONSE
 
 def handle_motd(message, message_from_id, isDM):
-    msg = my_settings.MOTD
     isAdmin = isNodeAdmin(message_from_id)
-    if  "?" in message:
-        msg = "Message of the day, set with 'motd $ HelloWorld!'"
-    elif "$" in message and isAdmin:
-        my_settings.MOTD = message.split("$")[1]
-        my_settings.MOTD = my_settings.MOTD.rstrip()
-        logger.debug(f"System: {message_from_id} temporarly changed my_settings.MOTD: {my_settings.MOTD}")
-        msg = "my_settings.MOTD changed to: " + my_settings.MOTD
-    return msg
+    if "?" in message:
+        return "Pesan harian bot. Admin bisa ubah dengan: !pesan $ teks pesan baru"
+    if "$" in message and isAdmin:
+        my_settings.MOTD = message.split("$")[1].rstrip()
+        logger.debug(f"System: {message_from_id} changed MOTD: {my_settings.MOTD}")
+        return "Pesan harian diupdate: " + my_settings.MOTD
+    from datetime import datetime, timezone, timedelta
+    _wib = datetime.now(timezone(timedelta(hours=7)))
+    _hour = _wib.hour
+    _doy = _wib.timetuple().tm_yday  # day of year — seed for daily rotation
+    if 5 <= _hour < 11:
+        salam = "Selamat pagi"
+        bank_key = "MOTIVASI_PAGI"
+    elif 11 <= _hour < 15:
+        salam = "Selamat siang"
+        bank_key = "MOTIVASI_SIANG"
+    elif 15 <= _hour < 18:
+        salam = "Selamat sore"
+        bank_key = "MOTIVASI_SORE"
+    else:
+        salam = "Selamat malam"
+        bank_key = "MOTIVASI_MALAM"
+    try:
+        import importlib.util, sys
+        _spec = importlib.util.spec_from_file_location("greeting_banks", "/opt/meshing-around/data/greeting_banks.py")
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        bank = getattr(_mod, bank_key, [])
+        daily_msg = bank[_doy % len(bank)] if bank else my_settings.MOTD
+    except Exception:
+        daily_msg = my_settings.MOTD
+    return f"{salam}! {daily_msg}"
 
 def handle_echo(message, message_from_id, deviceID, isDM, channel_number):
     # Check if user is admin
@@ -432,7 +528,7 @@ def handle_echo(message, message_from_id, deviceID, isDM, channel_number):
         time.sleep(splitDelay) # throttle for 2x send
         send_message(msg_to_echo, target_channel, 0, target_device)
         time.sleep(splitDelay) # throttle for 2x send
-        return f"🐬echoed to channel {target_channel} device {target_device}"
+        return f"🐬 Udah dikirim ke channel {target_channel} device {target_device} bro!"
 
     # dev echoBinary off
     echoBinary = False
@@ -456,7 +552,7 @@ def handle_echo(message, message_from_id, deviceID, isDM, channel_number):
                 "Admin usage: echo <message> c=<channel> d=<device>\n"
                 "Example: echo Hello world c=1 d=2"
             )
-        return "command returns your message back to you. Example: echo Hello World"
+        return "Perintah echo balikkin pesanmu lagi. Contoh: !echo Halo dunia"
 
     # process normal echo back to user
     elif message.strip().lower().startswith("echo "):
@@ -547,44 +643,35 @@ def handle_howtall(message, message_from_id, deviceID, isDM):
     lat = location[0]
     lon = location[1]
     if lat == my_settings.latitudeValue and lon == my_settings.longitudeValue:
-        # add guessing tot he msg
-        msg += "Guessing:"
-    if my_settings.use_metric:
-            measure = "meters" 
-    else:
-            measure = "feet"
-    # if ? in message
+        msg += "Estimasi (tanpa GPS): "
+    satuan = "meter" if my_settings.use_metric else "kaki"
+    contoh = "!ketinggian 5.5"
     if "?" in message.lower():
-        return f"command estimates your height based on the shadow length you provide in {measure}. Example: howtall 5.5"
-    # get the shadow length from the message split after howtall
+        return f"Estimasi ketinggian benda berdasarkan panjang bayangannya. Contoh: {contoh} (panjang bayangan dalam {satuan})"
     try:
-        shadow_length = float(message.lower().split("howtall ")[1].split(" ")[0])
+        parts = message.strip().split()
+        shadow_length = float(parts[1]) if len(parts) >= 2 else None
+        if shadow_length is None:
+            raise ValueError
     except (IndexError, ValueError):
-        return f"Please provide a shadow length in {measure} example: howtall 5.5"
-
-    # get data
+        return f"Masukkan panjang bayangan dalam {satuan}. Contoh: {contoh}"
     msg += measureHeight(lat, lon, shadow_length)
-
-    # if data has NO_ALERTS return help
     if my_settings.NO_ALERTS in msg:
-        return f"Please provide a shadow length in {measure} example: howtall 5.5"
-    
+        return f"Masukkan panjang bayangan dalam {satuan}. Contoh: {contoh}"
     return msg
 
 def handle_wiki(message, isDM):
-    # location = get_node_location(message_from_id, deviceID)
-    msg = "Wikipedia search function. \nUsage example:📲wiki travelling gnome"
     if "?" in message.lower():
-        return msg
-    if "wiki" in message.lower():
+        return "Cari artikel Wikipedia. Contoh: !cari gunung krakatau"
+    msg_lower = message.lower()
+    if "cari" in msg_lower or "wiki" in msg_lower:
         parts = message.split(" ", 1)
         if len(parts) < 2 or not parts[1].strip():
-            return "Please add a search term example:📲wiki travelling gnome"
+            return "Ketik kata yang mau dicari. Contoh: !cari gunung krakatau"
         search = parts[1].strip()
         if search:
             return get_wikipedia_summary(search)
-        
-    return msg
+    return "Ketik kata yang mau dicari. Contoh: !cari gunung krakatau"
 
 # Runtime Variables for LLM
 llmRunCounter = 0
@@ -655,6 +742,8 @@ def handle_llm(message_from_id, channel_number, deviceID, message, publicChannel
 
     if "ask:" in message.lower():
         user_input = message.split(":")[1]
+    elif "tanya" in message.lower():
+        user_input = message.lower().split("tanya", 1)[1]
     elif "askai" in message.lower():
         user_input = message.replace("askai", "")
     else:
@@ -692,14 +781,14 @@ def handle_llm(message_from_id, channel_number, deviceID, message, publicChannel
     user_input = user_input.strip()
         
     if len(user_input) < 1:
-        return "Please ask a question"
+        return "Ketik pertanyaanmu setelah !tanya — contoh: !tanya kenapa langit biru?"
 
     # information for the user on how long the query will take on average
     if llmRunCounter > 0:
         averageRuntime = sum(llmTotalRuntime) / len(llmTotalRuntime)
-        msg = f"Average query time is: {int(averageRuntime)} seconds" if averageRuntime > 25 else ''
+        msg = f"⏳ Rata-rata waktu jawab: {int(averageRuntime)} detik, sabar ya..." if averageRuntime > 25 else ''
     else:
-        msg = "Please wait, response could take 30+ seconds. Fund the SysOp's GPU budget!"
+        msg = "⏳ Sabar dulu bro, lagi mikir keras nih... tunggu bentar ya! 🤔"
 
     if msg != '':
         if (channel_number == publicChannel and my_settings.antiSpam) or my_settings.useDMForResponse:
@@ -712,7 +801,9 @@ def handle_llm(message_from_id, channel_number, deviceID, message, publicChannel
     start = time.time()
 
     #response = asyncio.run(llm_query(user_input, message_from_id))
-    response = llm_query(user_input, message_from_id, location_name)
+    myNodeNum = globals().get(f'myNodeNum{deviceID}', 777)
+    bot_long_name = get_name_from_number(myNodeNum, 'long', deviceID)
+    response = llm_query(user_input, message_from_id, location_name, bot_name=bot_long_name)
 
     # handle the runtime counter
     end = time.time()
@@ -1360,17 +1451,15 @@ def handle_mwx(message_from_id, deviceID, cmd):
 def handle_wxc(message_from_id, deviceID, cmd, days=None, vox=False):
     # Weather from NOAA or Open-Meteo
     location = get_node_location(message_from_id, deviceID)
+    if location[0] == my_settings.latitudeValue and location[1] == my_settings.longitudeValue:
+        return "\U0001f4cd Lokasi kamu ga ketahuan nih bro! Aktifin GPS di node kamu dulu ya, baru minta cuaca lagi. \U0001f60a"
     if my_settings.use_meteo_wxApi and not "wxc" in cmd and not use_metric:
-        #logger.debug("System: Bot Returning Open-Meteo API for weather imperial")
         weather = get_wx_meteo(str(location[0]), str(location[1]))
     elif my_settings.use_meteo_wxApi:
-        #logger.debug("System: Bot Returning Open-Meteo API for weather metric")
         weather = get_wx_meteo(str(location[0]), str(location[1]), 1)
     elif not my_settings.use_meteo_wxApi and "wxc" in cmd or my_settings.use_metric:
-        #logger.debug("System: Bot Returning NOAA API for weather metric")
         weather = get_NOAAweather(str(location[0]), str(location[1]), 1, report_days=days)
     else:
-        #logger.debug("System: Bot Returning NOAA API for weather imperial")
         weather = get_NOAAweather(str(location[0]), str(location[1]), report_days=days)
     return weather
 
@@ -1452,7 +1541,7 @@ def handle_bbsdelete(message, message_from_id):
 
 def handle_messages(message, deviceID, channel_number, msg_history, publicChannel, isDM):
     if  "?" in message and isDM:
-        return message.split("?")[0].title() + " command returns the last " + str(storeFlimit) + " messages sent on a channel."
+        return f"Menampilkan {storeFlimit} pesan terakhir yang dikirim di channel ini."
     else:
         # Filter messages for this device/channel
         filtered_msgs = [
@@ -1493,7 +1582,7 @@ def handle_messages(message, deviceID, channel_number, msg_history, publicChanne
         if len(response) > 0:
             return header + response
         else:
-            return "No 📭messages in history"
+            return "Belum ada pesan tersimpan 📭"
 
 def handle_sun(message_from_id, deviceID, channel_number, vox=False):
     if vox:
@@ -1525,22 +1614,22 @@ def sysinfo(message, message_from_id, deviceID, isDM):
 
 def handle_lheard(message, nodeid, deviceID, isDM):
     if  "?" in message and isDM:
-        return message.split("?")[0].title() + " command returns a list of the nodes that have been heard recently"
+        return "Perintah ini buat liat node-node yang baru aja ketahuan di mesh. Kayak daftar tamu kondangan! 🎉"
 
     # display last heard nodes add to response
-    bot_response = "Last Heard\n"
+    bot_response = "📡 Node yang kedeteksi belakangan ini:\n"
     bot_response += str(get_node_list(1))
 
     # show last users of the bot with the cmdHistory list
     history = handle_history(message, nodeid, deviceID, isDM, lheard=True)
     if history:
-        bot_response += f'LastSeen\n{history}'
+        bot_response += f'Terakhir aktif:\n{history}'
     else:
         # trim the last \n
         bot_response = bot_response[:-1]
 
     # get count of nodes heard
-    bot_response += f"\n👀In Mesh: {len(seenNodes)}"
+    bot_response += f"\n👀 Total di mesh: {len(seenNodes)} node"
 
     # bot_response += getNodeTelemetry(deviceID)
     return bot_response
@@ -1551,7 +1640,7 @@ def handle_history(message, nodeid, deviceID, isDM, lheard=False):
     buffer = []
 
     if  "?" in message and isDM:
-        return message.split("?")[0].title() + " command returns a list of commands received."
+        return "Perintah ini nunjukin riwayat perintah yang pernah masuk ke bot. Kayak CCTV bot! 📹"
 
     # show the last commands from the user to the bot
     if not lheard:
@@ -1603,11 +1692,36 @@ def handle_history(message, nodeid, deviceID, isDM, lheard=False):
 
 def handle_whereami(message_from_id, deviceID, channel_number):
     location = get_node_location(message_from_id, deviceID, channel_number)
-    # check api_throttle
     check_throttle = api_throttle(message_from_id, deviceID, apiName='whereami')
     if check_throttle:
         return check_throttle
-    return where_am_i(str(location[0]), str(location[1]))
+    lat, lon = location[0], location[1]
+    if int(float(lat)) == 0 and int(float(lon)) == 0:
+        return "📍 Lokasi tidak ditemukan. Pastikan GPS kamu aktif dan sudah mengirim posisi."
+    try:
+        from geopy.geocoders import Nominatim
+        import maidenhead as mh
+        geolocator = Nominatim(user_agent="mesh-bot")
+        loc = geolocator.reverse(f"{lat}, {lon}")
+        addr = loc.raw.get('address', {})
+        parts = []
+        road = addr.get('road') or addr.get('pedestrian') or addr.get('footway', '')
+        village = addr.get('village') or addr.get('suburb') or addr.get('neighbourhood', '')
+        city = addr.get('city') or addr.get('town') or addr.get('regency', '')
+        county = addr.get('county', '')
+        state = addr.get('state', '')
+        if road:    parts.append(road)
+        if village: parts.append(village)
+        if city:    parts.append(city)
+        elif county: parts.append(county)
+        if state:   parts.append(state)
+        area = ', '.join(filter(None, parts)) or loc.address
+        grid = mh.to_maiden(float(lat), float(lon))
+        gmaps = f"https://maps.google.com/?q={lat},{lon}"
+        msg = f"📍 {area}\n🌐 Grid: {grid}\n🗺️ {gmaps}"
+        return msg
+    except Exception as e:
+        return where_am_i(str(lat), str(lon))
 
 def handle_repeaterQuery(message_from_id, deviceID, channel_number):
     location = get_node_location(message_from_id, deviceID, channel_number)
@@ -1636,26 +1750,55 @@ def handle_moon(message_from_id, deviceID, channel_number, vox=False):
 
 def handle_whoami(message_from_id, deviceID, hop, snr, rssi, pkiStatus):
     try:
-        loc = []
-        msg = "You are " + str(message_from_id) + " AKA " +\
-                str(get_name_from_number(message_from_id, 'long', deviceID) + " AKA, " +\
-                str(get_name_from_number(message_from_id, 'short', deviceID)) + " AKA, " +\
-                str(decimal_to_hex(message_from_id)) + f"\n")
-        msg += f"I see the signal strength is {rssi} and the SNR is {snr} with hop count of {hop}"
-        if pkiStatus[1] != 'ABC':
-            msg += f"\nYour PKI bit is {pkiStatus[0]} pubKey: {pkiStatus[1]}"
+        nama_panjang = get_name_from_number(message_from_id, 'long', deviceID)
+        nama_pendek  = get_name_from_number(message_from_id, 'short', deviceID)
+        node_hex     = decimal_to_hex(message_from_id)
 
+        # hardware model from node db
+        hw = ""
+        try:
+            _iface = globals().get(f'interface{deviceID}')
+            _node  = _iface.nodes.get(node_hex, {})
+            hw = _node.get('user', {}).get('hwModel', '')
+        except Exception:
+            pass
+
+        # signal info
+        hop_clean = hop.replace("Gateway","").replace("Direct","RF langsung").replace("MQTT","MQTT").strip()
+        if float(snr) != 0 or float(rssi) != 0:
+            sinyal = f"RSSI={rssi} SNR={snr} via {hop_clean}"
+        else:
+            sinyal = f"via {hop_clean}"
+
+        msg  = f"👤 {nama_panjang} ({nama_pendek})\n"
+        msg += f"🔑 ID: {node_hex}\n"
+        if hw:
+            msg += f"📟 Hardware: {hw}\n"
+        msg += f"📶 Sinyal: {sinyal}"
+
+        # location
         loc = get_node_location(message_from_id, deviceID)
         if loc != [my_settings.latitudeValue, my_settings.longitudeValue]:
-            msg += f"\nYou are at: lat:{loc[0]} lon:{loc[1]}"
-
-            # check the positionMetadata for nodeID and get metadata
-            if positionMetadata and message_from_id in positionMetadata:
-                metadata = positionMetadata[message_from_id]
-                msg += f" alt:{metadata.get('altitude')}, speed:{metadata.get('groundSpeed')} bit:{metadata.get('precisionBits')}"
+            try:
+                from modules.locationdata import where_am_i
+                lokasi = where_am_i(str(loc[0]), str(loc[1]), short=True)
+                if lokasi and 'City' not in lokasi:
+                    msg += f"\n📍 {lokasi}"
+                else:
+                    # parse City/State from short format
+                    parts = {}
+                    for part in lokasi.split('.'):
+                        if ':' in part:
+                            k, v = part.split(':', 1)
+                            parts[k.strip()] = v.strip()
+                    area = ', '.join(filter(None, [parts.get('City',''), parts.get('State',''), parts.get('Country','')]))
+                    if area:
+                        msg += f"\n📍 {area}"
+            except Exception:
+                msg += f"\n📍 {loc[0]}, {loc[1]}"
     except Exception as e:
         logger.error(f"System: Error in whoami: {e}")
-        msg = "Error in whoami"
+        msg = "Waduh error nih waktu ngecek identitasmu. Coba lagi ya bro! 😅"
     return msg
 
 def handle_whois(message, deviceID, channel_number, message_from_id):
@@ -1687,7 +1830,7 @@ def handle_whois(message, deviceID, channel_number, message_from_id):
                 break
 
         if msg == '':
-            msg = "Provide a valid node number or short name"
+            msg = "Node-nya ga ketemu bro. Coba pake nomor atau nama pendek yang bener ya!"
         else:
             # if the user is an admin show the channel and interface and location
             if str(message_from_id) in bbs_admin_list:
@@ -1874,6 +2017,23 @@ def onReceive(packet, interface):
     decoded = packet.get('decoded')
     if not isinstance(decoded, dict):
         decoded = {}
+
+    # Unwrap SIMULATOR_APP: portduino/meshtasticd wraps all MQTT packets in
+    # SIMULATOR_APP (Compressed proto). Extract the inner portnum and payload.
+    if decoded.get('portnum') == 'SIMULATOR_APP':
+        sim = decoded.get('simulator', {})
+        inner_portnum = sim.get('portnum', '')
+        inner_raw = sim.get('raw')
+        if inner_raw and inner_portnum:
+            new_decoded = {'portnum': inner_portnum, 'payload': bytes(inner_raw.data)}
+            if inner_portnum == 'TEXT_MESSAGE_APP':
+                try:
+                    new_decoded['text'] = bytes(inner_raw.data).decode('utf-8')
+                except Exception:
+                    pass
+            decoded = new_decoded
+            packet = dict(packet)
+            packet['decoded'] = decoded
 
     # extract interface details from inbound packet
     rxType = type(interface).__name__
@@ -2106,12 +2266,14 @@ def onReceive(packet, interface):
                 # message is DM to us
                 isDM = True
                 # check if the message contains a trap word, DMs are always responded to
+                _idle_followup_tracker.pop(message_from_id, None)
                 if (messageTrap(message_string) and not llm_enabled) or messageTrap(message_string.split()[0]):
                     # log the message to stdout
                     logger.info(f"Device:{rxNode} Channel: {channel_number} " + CustomFormatter.green + f"Received DM: " + CustomFormatter.white + f"{message_log_string} " + CustomFormatter.purple +\
                                 "From: " + CustomFormatter.white + f"{get_name_from_number(message_from_id, 'long', rxNode)}")
                     # respond with DM
                     send_message(auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM), channel_number, message_from_id, rxNode)
+                    _idle_followup_tracker[message_from_id] = [time.time(), rxNode, channel_number, False]
                 else:
                     # DM is useful for games or LLM
                     if games_enabled and ("Direct" in hop or hop_count < my_settings.game_hop_limit):
@@ -2130,6 +2292,7 @@ def onReceive(packet, interface):
                             # respond with LLM
                             llm = handle_llm(message_from_id, channel_number, rxNode, message_string, publicChannel)
                             send_message(llm, channel_number, message_from_id, rxNode)
+                            _idle_followup_tracker[message_from_id] = [time.time(), rxNode, channel_number, False]
                         else:
                             # respond with welcome message on DM
                             logger.warning(f"Device:{rxNode} Ignoring DM: {message_log_string} From: {get_name_from_number(message_from_id, 'long', rxNode)}")
@@ -2288,6 +2451,11 @@ async def start_rx():
 
 # Initialize game trackers
 loadLeaderboard()
+
+# Idle follow-up tracker: {nodeID: (last_bot_reply_ts, deviceID, channel_number, already_sent)}
+_idle_followup_tracker = {}
+IDLE_FOLLOWUP_SECONDS = 300  # 5 minutes
+
 gameTrackers = [
     (dwPlayerTracker, "DopeWars", handleDopeWars),
     (lemonadeTracker, "LemonadeStand", handleLemonade),
@@ -2303,6 +2471,104 @@ gameTrackers = [
     # quiz does not use a tracker (quizGamePlayer) always active
 ]
 
+
+async def idleFollowupLoop():
+    """Send a gentle follow-up DM if user goes quiet for IDLE_FOLLOWUP_SECONDS after bot replied."""
+    while True:
+        await asyncio.sleep(60)
+        now = time.time()
+        to_remove = []
+        for nodeID, entry in list(_idle_followup_tracker.items()):
+            last_ts, deviceID, channel_number, sent = entry
+            if not sent and (now - last_ts) >= IDLE_FOLLOWUP_SECONDS:
+                entry[3] = True  # mark sent
+                myNodeNum = globals().get(f'myNodeNum{deviceID}', 777)
+                bot_name = get_name_from_number(myNodeNum, 'long', deviceID)
+                user_name = get_name_from_number(nodeID, 'long', deviceID)
+                msg = (
+                    f"Hei {user_name}! 👋 Masih ada yang bisa gue bantu ga bro? "
+                    f"Ketik !cmd buat liat semua fitur yang ada. Gue standby nih! 😄"
+                )
+                send_message(msg, 0, nodeID, deviceID)
+                logger.info(f"System: Idle follow-up sent to {user_name} ({nodeID})")
+                to_remove.append(nodeID)
+        for nodeID in to_remove:
+            _idle_followup_tracker.pop(nodeID, None)
+
+
+async def greetingBroadcastLoop():
+    import random
+    from datetime import datetime, timezone, timedelta
+    from data.greeting_banks import (
+        JOKES, MOTIVASI_PAGI, MOTIVASI_SIANG, MOTIVASI_SORE, MOTIVASI_MALAM,
+        GREET_TEMPLATES, HOLIDAYS_2026
+    )
+
+    WIB              = timezone(timedelta(hours=7))
+    BROADCAST_HOURS  = {0, 6, 12, 18}
+    LONGFAST_CHANNEL = 0
+    BROADCAST_DEVICE = 1
+
+    MOTIVASI_BY_SLOT = {
+        "pagi":  MOTIVASI_PAGI,
+        "siang": MOTIVASI_SIANG,
+        "sore":  MOTIVASI_SORE,
+        "malam": MOTIVASI_MALAM,
+    }
+
+    fired_hours = set()
+    while True:
+        await asyncio.sleep(30)
+        now   = datetime.now(WIB)
+        today = now.date()
+        key   = (today, now.hour)
+
+        if now.hour not in BROADCAST_HOURS or now.minute >= 5 or key in fired_hours:
+            continue
+
+        fired_hours.add(key)
+        if len(fired_hours) > 20:
+            fired_hours = set(list(fired_hours)[-8:])
+
+        weekday   = today.weekday()
+        day_month = (today.month, today.day)
+        is_holiday = day_month in HOLIDAYS_2026
+        is_weekend = weekday >= 5
+        is_payday  = today.day == 25
+
+        slot = {0: "malam", 6: "pagi", 12: "siang", 18: "sore"}.get(now.hour, "malam")
+        day_names = ["Senin","Selasa","Rabu","Kamis","Jumat","Sabtu","Minggu"]
+        day_name  = day_names[weekday]
+
+        # pick context key
+        if is_holiday:
+            ctx = "holiday"
+        elif is_payday:
+            ctx = "payday"
+        elif is_weekend:
+            ctx = "weekend"
+        else:
+            ctx = "weekday"
+
+        # greeting template
+        template_key = f"{ctx}_{slot}"
+        templates    = GREET_TEMPLATES.get(template_key, GREET_TEMPLATES["weekday_pagi"])
+        header       = random.choice(templates).format(
+            day     = day_name,
+            holiday = HOLIDAYS_2026.get(day_month, ""),
+        )
+
+        # payload: jokes on pagi/sore, motivasi on siang/malam
+        if slot in ("pagi", "sore"):
+            payload = random.choice(JOKES)
+        else:
+            payload = random.choice(MOTIVASI_BY_SLOT[slot])
+
+        msg = f"{header}\n{payload}\nKetik !cmd buat liat fitur. — RiV-Bot"
+        send_message(msg, LONGFAST_CHANNEL, 0, BROADCAST_DEVICE)
+        logger.info(f"System: Greeting [{ctx}/{slot}] sent — {len(msg)} chars")
+
+
 # Hello World 
 async def main():
     tasks = []
@@ -2312,6 +2578,8 @@ async def main():
         # Create core tasks
         tasks.append(asyncio.create_task(start_rx(), name="mesh_rx"))
         tasks.append(asyncio.create_task(watchdog(), name="watchdog"))
+        tasks.append(asyncio.create_task(idleFollowupLoop(), name="idle_followup"))
+        tasks.append(asyncio.create_task(greetingBroadcastLoop(), name="greeting_broadcast"))
 
         # Add optional tasks
         if my_settings.dataPersistence_enabled:

@@ -80,7 +80,7 @@ def get_wikipedia_summary(search_term, location=None, force=False, truncate=True
     if not search_term or not search_term.strip():
         return ERROR_FETCHING_DATA
 
-    api_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(search_term)}"
+    api_url = f"https://id.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(search_term)}"
     headers = {
         "User-Agent": "MeshBot/1.0 (https://github.com/kkeeton/meshing-around; contact: youremail@example.com)"
     }
@@ -95,10 +95,10 @@ def get_wikipedia_summary(search_term, location=None, force=False, truncate=True
         if "extract" not in data or not data.get("extract"):
             #logger.debug(f"System: Wikipedia API returned no extract for:{search_term} (data: {data})")
             return ERROR_FETCHING_DATA
-        if data.get("type") == "disambiguation" or "may refer to:" in data.get("extract", ""):
+        if data.get("type") == "disambiguation" or "dapat merujuk ke" in data.get("extract", "") or "may refer to:" in data.get("extract", ""):
             #logger.warning(f"System: Disambiguation page for:{search_term} (data: {data})")
             # Fetch and parse the HTML disambiguation page
-            html_url = f"https://en.wikipedia.org/wiki/{requests.utils.quote(search_term)}"
+            html_url = f"https://id.wikipedia.org/wiki/{requests.utils.quote(search_term)}"
             html_resp = requests.get(html_url, timeout=5, headers=headers)
             if html_resp.status_code == 200:
                 soup = bs.BeautifulSoup(html_resp.text, 'html.parser')
@@ -109,12 +109,12 @@ def get_wikipedia_summary(search_term, location=None, force=False, truncate=True
                     href = a.get('href')
                     # Filter out non-article links
                     if title and href and ':' not in href:
-                        choices.append(f"{title} (https://en.wikipedia.org{href})")
+                        choices.append(f"{title} (https://id.wikipedia.org{href})")
                     if len(choices) >= 5:
                         break
                 if choices:
-                    return f"'{search_term}' is ambiguous. Did you mean:\n- " + "\n- ".join(choices)
-            return f"'{search_term}' is ambiguous. Please be more specific. See: {html_url}"
+                    return f"Hasil pencarian '{search_term}' ambigu. Maksudmu:\n- " + "\n- ".join(choices)
+            return f"Pencarian '{search_term}' terlalu umum. Coba lebih spesifik: {html_url}"
         summary = data.get("extract")
         if not summary or not isinstance(summary, str) or not summary.strip():
             #logger.debug(f"System: No summary found for:{search_term} (data: {data})")

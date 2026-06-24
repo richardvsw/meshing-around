@@ -16,7 +16,7 @@ import csv
 import os
 import sqlite3
 
-trap_list_location = ("whereami", "wx", "wxa", "wxalert", "rlist", "ea", "ealert", "riverflow", "valert", "earthquake", "howfar", "map",)
+trap_list_location = ("whereami", "dimana", "lokasi", "wx", "cuaca", "wxa", "wxalert", "rlist", "repeater", "ea", "ealert", "riverflow", "valert", "earthquake", "howfar", "jarak", "map",)
 
 def where_am_i(lat=0, lon=0, short=False, zip=False):
     whereIam = ""
@@ -920,14 +920,14 @@ def distance(lat=0,lon=0,nodeID=0, reset=False):
         #register first point NodeID, lat, lon, time, point
         howfarDB[nodeID] = [{'lat': lat, 'lon': lon, 'time': datetime.now()}]
         if reset:
-            return "Tracking reset, new starting point registered🗺️"
+            return "Tracking direset, titik awal baru tercatat 🗺️"
         else:
-            return "Starting point registered🗺️"
+            return "Titik awal tercatat 🗺️ — ketik !jarak lagi setelah bergerak. Ketik !jarak reset untuk mulai ulang"
     else:
         #de-dupe points if same as last point
         if howfarDB[nodeID][-1]['lat'] == lat and howfarDB[nodeID][-1]['lon'] == lon:
             dupe = True
-            msg = "No New GPS📍 "
+            msg = "GPS tidak berubah 📍 "
         # calculate distance from last point in howfarDB
         last_point = howfarDB[nodeID][-1]
         lat1 = math.radians(last_point['lat'])
@@ -952,7 +952,7 @@ def distance(lat=0,lon=0,nodeID=0, reset=False):
         initial_bearing = math.atan2(x, y)
         initial_bearing = math.degrees(initial_bearing)
         compass_bearing = (initial_bearing + 360) % 360
-        msg += f" 🧭{compass_bearing:.2f}° Bearing from last📍"
+        msg += f" 🧭{compass_bearing:.2f}° arah dari titik terakhir"
 
         # calculate the speed if time difference is more than 1 minute
         time_diff = datetime.now() - last_point['time']
@@ -964,7 +964,7 @@ def distance(lat=0,lon=0,nodeID=0, reset=False):
             else:
                 speed_mph = (distance_km * 0.621371) / hours
                 speed_str = f"{speed_mph:.2f} mph"
-            msg += f", travel time: {int(time_diff.total_seconds()//60)} min, Speed: {speed_str}"
+            msg += f", waktu tempuh: {int(time_diff.total_seconds()//60)} mnt, kecepatan: {speed_str}"
 
         # calculate total distance traveled including this point computed in distance_km from calculate distance from last point in howfarDB
         total_distance_km = 0.0
@@ -983,10 +983,10 @@ def distance(lat=0,lon=0,nodeID=0, reset=False):
         # add the distance from last point to current point
         total_distance_km += distance_km
         if my_settings.use_metric:
-            msg += f", Total: {total_distance_km:.2f} km"
+            msg += f", total: {total_distance_km:.2f} km"
         else:
             total_distance_miles = total_distance_km * 0.621371
-            msg += f", Total: {total_distance_miles:.2f} miles"
+            msg += f", total: {total_distance_miles:.2f} mil"
         
         # update the last point in howfarDB
         if not dupe:

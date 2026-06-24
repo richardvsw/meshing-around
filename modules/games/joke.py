@@ -178,15 +178,20 @@ def sendWithEmoji(message):
     return ' '.join(words)
 
 def tell_joke(nodeID=0, vox=False, test=False):
-    dadjoke = Dadjoke()
-    if test:
-        return sendWithEmoji(dadjoke.joke)
     try:
-        if dad_jokes_emojiJokes:
-            renderedLaugh = sendWithEmoji(dadjoke.joke)
-        else:
-            renderedLaugh = dadjoke.joke
-        return renderedLaugh
-    except Exception as e:
-        return random.choice(lameJokes)
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location("greeting_banks", "/opt/meshing-around/data/greeting_banks.py")
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        if random.random() < 0.5 and _mod.JOKES_QA:
+            item = random.choice(_mod.JOKES_QA)
+            # JOKES_QA is list of tuples (question, answer)
+            if isinstance(item, (tuple, list)) and len(item) >= 2:
+                return f"{item[0]}\n\n{item[1]}"
+            return str(item)
+        elif _mod.JOKES:
+            return random.choice(_mod.JOKES)
+    except Exception:
+        pass
+    return random.choice(lameJokes)
 

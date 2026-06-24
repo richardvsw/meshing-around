@@ -53,10 +53,10 @@ def get_rss_feed(msg):
         feed_url = RSS_FEED_URLS[idx]
     except (ValueError, IndexError):
         logger.warning(f"RSS: Feed '{feed_name}' not found in RSS_FEED_URLS ({RSS_FEED_URLS}).")
-        return f"Feed '{feed_name}' not found."
+        return f"Feed '{feed_name}' tidak ditemukan. Pilihan: {', '.join(RSS_FEED_NAMES)}"
 
     if "?" in msg_lower:
-        return f"Fetches the latest {RSS_RETURN_COUNT} entries RSS feeds. Available feeds are: {', '.join(RSS_FEED_NAMES)}. To fetch a specific feed, include its name in your request."
+        return f"Menampilkan {RSS_RETURN_COUNT} berita terbaru. Feed tersedia: {', '.join(RSS_FEED_NAMES)}. Contoh: !berita tempo"
 
     # Fetch and parse the RSS feed
     try:
@@ -76,7 +76,7 @@ def get_rss_feed(msg):
 
         if not items:
             logger.debug(f"No RSS or Atom feed entries found in feed xml_data: {xml_data[:500]}...")
-            return "No RSS or Atom feed entries found."
+            return "Tidak ada berita ditemukan."
 
         formatted_entries = []
         seen_first3 = set()  # Track first 3 words (lowercased) to avoid duplicates
@@ -132,8 +132,8 @@ def get_rss_feed(msg):
                 continue
             seen_first3.add(first3)
 
-            formatted_entries.append(f"{title}\n{description}\n")
-        return "\n".join(formatted_entries)
+            formatted_entries.append(f"{title}\n{link}")
+        return "\n\n".join(formatted_entries)
     except Exception as e:
         logger.error(f"Error fetching RSS feed from {feed_url}: {e}")
         return ERROR_FETCHING_DATA

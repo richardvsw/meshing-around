@@ -17,7 +17,7 @@ from modules.log import logger, getPrettyTime, CustomFormatter
 
 # Global Variables
 trap_list = ("cmd","cmd?","bannode",) # base commands
-help_message = "Bot CMD?:"
+help_message = "🤖 Perintah Bot (pake ! di depan):"
 asyncLoop = asyncio.new_event_loop()
 games_enabled = False
 multiPingList = [{'message_from_id': 0, 'count': 0, 'type': '', 'deviceID': 0, 'channel_number': 0, 'startCount': 0}]
@@ -26,27 +26,27 @@ interface_retry_count = 3
 # Ping Configuration
 if ping_enabled:
     # ping, pinging, ack, testing, test, pong
-    trap_list_ping = ("ping", "pinging", "ack", "testing", "test", "pong", "🔔", "cq","cqcq", "cqcqcq")
+    trap_list_ping = ("ping", "pinging", "ack", "testing", "test", "pong", "🔔", "cq","cqcq", "cqcqcq", "sinyal", "coba", "ketuk")
     trap_list = trap_list + trap_list_ping
-    help_message = help_message + "ping"
+    help_message = help_message + "ping/sinyal/ketuk"
 
 # Echo Configuration
 if enableEcho:
-    trap_list_echo = ("echo",)
+    trap_list_echo = ("echo", "balik", "ulang")
     trap_list = trap_list + trap_list_echo
-    help_message = help_message + ", echo"
+    help_message = help_message + ", echo/balik"
 
 # Sitrep Configuration
 if sitrep_enabled:
-    trap_list_sitrep = ("sitrep", "lheard", "sysinfo", "leaderboard")
+    trap_list_sitrep = ("sitrep", "lheard", "sysinfo", "infosistem", "leaderboard", "peringkat", "info", "radar", "daftar")
     trap_list = trap_list + trap_list_sitrep
-    help_message = help_message + ", sitrep, sysinfo, leaderboard"
+    help_message = help_message + ", sitrep/info/radar, sysinfo, leaderboard"
 
 # MOTD Configuration
 if motd_enabled:
-    trap_list_motd = ("motd",)
+    trap_list_motd = ("motd", "pesan")
     trap_list = trap_list + trap_list_motd
-    help_message = help_message + ", motd"
+    help_message = help_message + ", motd/pesan"
 
 # SMTP Configuration
 if enableSMTP:
@@ -61,9 +61,9 @@ if emergency_responder_enabled:
     
 # whoami Configuration
 if whoami_enabled:
-    trap_list_whoami = ("whoami", "📍", "whois")
+    trap_list_whoami = ("whoami", "📍", "whois", "siapa", "akulah")
     trap_list = trap_list + trap_list_whoami
-    help_message = help_message + ", whoami"
+    help_message = help_message + ", whoami/siapa"
 
 # Solar Conditions Configuration
 if solar_conditions_enabled:
@@ -84,7 +84,7 @@ if enableCmdHistory:
 if location_enabled:
     from modules.locationdata import * # from the spudgunman/meshing-around repo
     trap_list = trap_list + trap_list_location
-    help_message = help_message + ", whereami, wx, howfar"
+    help_message = help_message + ", whereami/dimana, wx/cuaca, howfar"
     if enableGBalerts and not enableDEalerts:
         from modules.globalalert import * # from the spudgunman/meshing-around repo
         logger.warning(f"System: GB Alerts not functional at this time need to find a source API")
@@ -117,7 +117,7 @@ if location_enabled:
 if wxAlertBroadcastEnabled or ipawsAlertEnabled or volcanoAlertBroadcastEnabled or eAlertBroadcastEnabled: #eAlertBroadcastEnabled depricated
     from modules.locationdata import * # from the spudgunman/meshing-around repo
     # limited subset, this should be done better but eh..
-    trap_list = trap_list + ("wx", "wxa", "wxalert", "ea", "ealert", "valert")
+    trap_list = trap_list + ("wx", "wxa", "wxalert", "ea", "ealert", "valert", "cuaca", "weather", "dimana", "lokasi")
     help_message = help_message + ", ealert, valert"
 
 # NOAA Coastal Waters Forecasts
@@ -138,7 +138,7 @@ else:
 # Dad Jokes Configuration
 if dad_jokes_enabled:
     from modules.games.joke import * # from the spudgunman/meshing-around repo
-    trap_list = trap_list + ("joke",)
+    trap_list = trap_list + ("joke", "lelucon", "humor")
     help_message = help_message + ", joke"
 
 if dxspotter_enabled:
@@ -149,20 +149,26 @@ if dxspotter_enabled:
 # Wikipedia Search Configuration
 if wikipedia_enabled or use_kiwix_server:
     from modules.wiki import get_wikipedia_summary, get_kiwix_summary, get_wikipedia_summary
-    trap_list = trap_list + ("wiki",)
+    trap_list = trap_list + ("wiki", "cari")
     help_message = help_message + ", wiki"
 
 # RSS Feed Configuration
 if rssEnable or enable_headlines:
     if rssEnable:
         from modules.rss import get_rss_feed
-        trap_list = trap_list + ("readrss",)
+        trap_list = trap_list + ("readrss", "berita")
         help_message = help_message + ", readrss"
     if enable_headlines:
         from modules.rss import get_newsAPI
         trap_list = trap_list + ("latest",)
         help_message = help_message + ", latest"
 
+
+# BBM / Kurs / FIFA commands
+from modules.bbm import get_bbm_prices
+from modules.kurs import get_kurs_rupiah
+from modules.fifa import get_fifa2026
+trap_list = trap_list + ("hargabbm", "bbmharga", "kursrupiah", "kurs", "fifa2026", "fifa")
 # LLM Configuration
 if llm_enabled:
     from modules.llm import * # from the spudgunman/meshing-around repo
@@ -243,9 +249,9 @@ if battleship_enabled:
 # Games Configuration
 if games_enabled is True:
     help_message = help_message + ", games"
-    trap_list = trap_list + ("games",)
+    trap_list = trap_list + ("games", "main")
     gTnW_enabled = True
-    gamesCmdList = "Play via DM🕹️ CMD: "
+    gamesCmdList = "Game via DM 🕹️: "
     if dopewars_enabled:
         gamesCmdList += "dopeWars, "
     if lemonade_enabled:
@@ -280,7 +286,7 @@ if sentry_enabled:
 
 # Store and Forward Configuration
 if store_forward_enabled:
-    trap_list = trap_list + ("messages",)
+    trap_list = trap_list + ("messages", "arsip")
     help_message = help_message + ", messages"
 
 # QRZ Configuration
@@ -2016,23 +2022,23 @@ def loadLeaderboard():
 def get_mesh_leaderboard(msg, fromID, deviceID):
     """Get formatted leaderboard of extreme mesh metrics"""
     global meshLeaderboard
-    result = "📊Leaderboard📊\n"
+    result = "📊 Peringkat Mesh 📊\n"
 
     if "reset" in msg.lower() and str(fromID) in bbs_admin_list:
         initializeMeshLeaderboard()
-        return "✅ Leaderboard has been reset."
+        return "✅ Peringkat telah direset."
 
     # Lowest battery
     if meshLeaderboard['lowestBattery']['nodeID']:
         nodeID = meshLeaderboard['lowestBattery']['nodeID']
         value = round(meshLeaderboard['lowestBattery']['value'], 1)
-        result += f"🪫 Low Battery: {value}% {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"🪫 Baterai Terendah: {value}% {get_name_from_number(nodeID, 'short', 1)}\n"
     
     # Longest uptime
     if meshLeaderboard['longestUptime']['nodeID']:
         nodeID = meshLeaderboard['longestUptime']['nodeID']
         value = meshLeaderboard['longestUptime']['value']
-        result += f"🕰️ Uptime: {getPrettyTime(value)} {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"🕰️ Uptime Terlama: {getPrettyTime(value)} {get_name_from_number(nodeID, 'short', 1)}\n"
     
     # Fastest speed
     if meshLeaderboard['fastestSpeed']['nodeID']:
@@ -2040,9 +2046,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_kmh = round(meshLeaderboard['fastestSpeed']['value'], 1)
         value_mph = round(value_kmh / 1.60934, 1)
         if use_metric:
-            result += f"🚓 Speed: {value_kmh} km/h {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🚓 Kecepatan: {value_kmh} km/h {get_name_from_number(nodeID, 'short', 1)}\n"
         else:
-            result += f"🚓 Speed: {value_mph} mph {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🚓 Kecepatan: {value_mph} mph {get_name_from_number(nodeID, 'short', 1)}\n"
 
     # Tallest node
     if meshLeaderboard['tallestNode']['nodeID']:
@@ -2050,9 +2056,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_m = meshLeaderboard['tallestNode']['value']
         value_ft = round(value_m * 3.28084, 0)
         if use_metric:
-            result += f"🪜 Tallest: {int(round(value_m, 0))}m {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🪜 Tertinggi: {int(round(value_m, 0))}m {get_name_from_number(nodeID, 'short', 1)}\n"
         else:
-            result += f"🪜 Tallest: {int(value_ft)}ft {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🪜 Tertinggi: {int(value_ft)}ft {get_name_from_number(nodeID, 'short', 1)}\n"
     
     # Highest altitude
     if meshLeaderboard['highestAltitude']['nodeID']:
@@ -2060,9 +2066,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_m = meshLeaderboard['highestAltitude']['value']
         value_ft = round(value_m * 3.28084, 0)
         if use_metric:
-            result += f"🚀 Altitude: {int(round(value_m, 0))}m {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🚀 Ketinggian: {int(round(value_m, 0))}m {get_name_from_number(nodeID, 'short', 1)}\n"
         else:
-            result += f"🚀 Altitude: {int(value_ft)}ft {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🚀 Ketinggian: {int(value_ft)}ft {get_name_from_number(nodeID, 'short', 1)}\n"
 
     # Fastest airspeed
     if meshLeaderboard['fastestAirSpeed']['nodeID']:
@@ -2070,9 +2076,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_kmh = round(meshLeaderboard['fastestAirSpeed']['value'], 1)
         value_mph = round(value_kmh / 1.60934, 1)
         if use_metric:
-            result += f"✈️ Airspeed: {value_kmh} km/h {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"✈️ Kec. Udara: {value_kmh} km/h {get_name_from_number(nodeID, 'short', 1)}\n"
         else:
-            result += f"✈️ Airspeed: {value_mph} mph {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"✈️ Kec. Udara: {value_mph} mph {get_name_from_number(nodeID, 'short', 1)}\n"
     
     # Coldest temperature
     if meshLeaderboard['coldestTemp']['nodeID']:
@@ -2080,9 +2086,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_c = round(meshLeaderboard['coldestTemp']['value'], 1)
         value_f = round((value_c * 9/5) + 32, 1)
         if use_metric:
-            result += f"🥶 Coldest: {value_c}°C {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🥶 Terdingin: {value_c}°C {get_name_from_number(nodeID, 'short', 1)}\n"
         else:
-            result += f"🥶 Coldest: {value_f}°F {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🥶 Terdingin: {value_f}°F {get_name_from_number(nodeID, 'short', 1)}\n"
     
     # Hottest temperature
     if meshLeaderboard['hottestTemp']['nodeID']:
@@ -2090,9 +2096,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_c = round(meshLeaderboard['hottestTemp']['value'], 1)
         value_f = round((value_c * 9/5) + 32, 1)
         if use_metric:
-            result += f"🥵 Hottest: {value_c}°C {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🥵 Terpanas: {value_c}°C {get_name_from_number(nodeID, 'short', 1)}\n"
         else:
-            result += f"🥵 Hottest: {value_f}°F {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🥵 Terpanas: {value_f}°F {get_name_from_number(nodeID, 'short', 1)}\n"
     
     # Worst air quality
     if meshLeaderboard['worstAirQuality']['nodeID']:
@@ -2163,15 +2169,60 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
     return result
 
 def get_sysinfo(nodeID=0, deviceID=1):
-    # Get the system telemetry data for return on the sysinfo command
-    sysinfo = ''
-    stats = str(displayNodeTelemetry(nodeID, deviceID, userRequested=True)) + " 🤖👀" + str(len(seenNodes))
-    if "numPacketsTx:0" in stats or stats == -1:
-        return "Gathering Telemetry try again later⏳"
-    # replace Telemetry with Int in string
-    stats = stats.replace("Telemetry", "Int")
-    sysinfo += f"📊{stats}"
-    return sysinfo
+    interface = globals().get(f'interface{deviceID}')
+    myNodeNum = globals().get(f'myNodeNum{deviceID}')
+    # trigger telemetry refresh
+    raw = str(displayNodeTelemetry(nodeID, deviceID, userRequested=True))
+    if raw == "-1" or raw == str(-1):
+        return "Mengumpulkan telemetri, coba lagi sebentar ⏳"
+
+    def _parse(key):
+        import re
+        m = re.search(rf'{key}:([\d\.]+)', raw)
+        return m.group(1) if m else '?'
+
+    rx      = _parse('numPacketsRx')
+    tx      = _parse('numPacketsTx')
+    chutil  = _parse('ChUtil%')
+    airtx   = _parse('AirTx%')
+    uptime  = _parse('Uptime') if 'Uptime:' not in raw else raw.split('Uptime:')[1].split(' ')[0]
+    volt    = _parse('Volt')
+    nodes   = _parse('totalNodes')
+    online  = _parse('Online')
+
+    # battery
+    try:
+        node_data = interface.nodes.get(decimal_to_hex(myNodeNum), {})
+        batt = node_data.get('deviceMetrics', {}).get('batteryLevel', 0)
+        emji = "🔌" if batt == 101 else "🪫" if batt < 10 else "🔋"
+        batt_str = f"Colokan {emji}" if batt == 101 else f"{batt}% {emji}"
+    except Exception:
+        batt_str = "?"
+
+    # uptime pretty
+    try:
+        up_sec = node_data.get('deviceMetrics', {}).get('uptimeSeconds', 0)
+        uptime = getPrettyTime(up_sec) if up_sec else uptime
+    except Exception:
+        pass
+
+    import psutil, os
+    try:
+        cpu   = f"{psutil.cpu_percent(interval=1)}%"
+        ram   = f"{psutil.virtual_memory().percent}%"
+        disk  = f"{psutil.disk_usage('/').percent}%"
+    except Exception:
+        cpu = ram = disk = "?"
+
+    msg = (
+        f"🤖 Info Sistem Bot\n"
+        f"⏱️ Uptime: {uptime} • 🔋 {batt_str}\n"
+        f"📦 Paket: RX={rx} TX={tx}\n"
+        f"📡 ChUtil={chutil}% AirTx={airtx}%\n"
+        f"👥 Node: {online}/{nodes} online • 👀 {len(seenNodes)} pernah terlihat\n"
+        f"💻 CPU={cpu} RAM={ram} Disk={disk}"
+    )
+    return msg
 
 async def handleSignalWatcher():
     from modules.radio import signalWatcher
