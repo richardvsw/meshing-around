@@ -21,6 +21,7 @@ restrictedResponse = "🤖only available in a Direct Message📵" # "" for none
 
 def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_number, deviceID, isDM):
     global cmdHistory
+    ack_alarm(message_from_id)  # silence any active alarm
     #Auto response to messages
     message_lower = message.lower()
     bot_response = "🤖I'm sorry, I'm afraid I can't do that."
@@ -127,6 +128,11 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "kurs": lambda: get_kurs_rupiah(message),
     "fifa2026": lambda: get_fifa2026(message),
     "fifa": lambda: get_fifa2026(message),
+    "gempa":     lambda: get_gempa(message),
+    "alarm":     lambda: get_alarm(message, message_from_id),
+    "p3k":       lambda: get_p3k(message),
+    "konversi":  lambda: get_konversi(message),
+    "morse":     lambda: get_morse(message),
 
     "riverflow": lambda: handle_riverFlow(message, message_from_id, deviceID),
     "rlist": lambda: handle_repeaterQuery(message_from_id, deviceID, channel_number),
@@ -226,26 +232,36 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
 def handle_cmd(message, message_from_id, deviceID):
     # Command list with eng/indo aliases, 3 per message
     CMDS = [
-        ("!ping",          "Cek apakah bot online"),
-        ("!siapa",         "Info node kamu (ID, nama, sinyal)"),
-        ("!dimana",        "Lokasi GPS kamu (kota/daerah terdekat)"),
-        ("!jarak",         "Catat jarak tempuh dari posisi terakhir. Panggil lagi setelah bergerak untuk lihat hasilnya"),
-        ("!cuaca",         "Cuaca sekarang di lokasi kamu"),
-        ("!ketinggian",    "Estimasi ketinggian dari panjang bayangan"),
-        ("!pesan",         "Tampilkan pesan harian"),
-        ("!daftar",        "Daftar node yang terdengar di mesh"),
-        ("!peringkat",     "Ranking node (terjauh, terbanyak relay)"),
-        ("!infosistem",    "Info sistem bot (CPU, RAM, uptime)"),
-        ("!bulan",         "Fase bulan hari ini"),
-        ("!matahari",      "Waktu matahari terbit & terbenam"),
-        ("!surya",         "Kondisi solar flux"),
-        ("!lelucon",       "Minta joke acak"),
-        ("!tanya <pertanyaan>", "Tanya AI (dijawab lewat DM)"),
-        ("!cari <kata>",   "Cari di Wikipedia"),
-        ("!berita",        "Baca headline berita terbaru"),
-        ("!hargabbm",      "Cek harga BBM per provinsi"),
-        ("!kursrupiah",    "Kurs rupiah vs mata uang asing"),
-        ("!fifa2026",      "Jadwal & skor FIFA World Cup 2026"),
+        # Andalan utama
+        ("!ping",          "Bot masih hidup? Cek di sini 📡"),
+        ("!cuaca",         "Cuaca real-time di lokasimu ☀️🌧️"),
+        ("!hargabbm",      "Harga BBM hari ini per provinsi ⛽ — auto-detect lokasimu!"),
+        ("!kursrupiah",    "Kurs Rupiah vs 9 mata uang dunia 💱"),
+        ("!fifa2026",      "Skor & jadwal FIFA 2026 ⚽ — live update tiap 2 menit!"),
+        ("!gempa",       "Info gempa terkini dari BMKG"),
+        ("!alarm HH:MM", "Set alarm, bot DM sampai kamu balas"),
+        ("!p3k",         "Panduan pertolongan pertama"),
+        ("!konversi",    "Konversi satuan: jarak, berat, suhu, dll"),
+        ("!morse",       "Encode/decode kode morse"),
+        # Kenali mesh-mu
+        ("!siapa",         "Siapa kamu di mesh? ID, sinyal & lokasi 🧑‍💻"),
+        ("!dimana",        "Di mana kamu? Bot balas + link Google Maps 📍"),
+        ("!daftar",        "Siapa aja yang terdengar di mesh sekarang? 📡"),
+        ("!peringkat",     "Node paling jauh, paling aktif — cek ranking 🏆"),
+        ("!jarak",         "Tracking jarak tempuhmu — panggil lagi setelah bergerak 🚗"),
+        # Info & hiburan
+        ("!berita",        "Headline terkini: Tempo, CNN & BBC Indonesia 📰"),
+        ("!tanya <teks>",  "Tanya AI apa aja, dijawab via DM 🤖"),
+        ("!cari <kata>",   "Cari info di Wikipedia bahasa Indonesia 🔍"),
+        ("!lelucon",       "Joke & tebak-tebakan acak 😀"),
+        ("!pesan",         "Motivasi & salam harian dari bot 💬"),
+        # Langit & alam
+        ("!matahari",      "Terbit & terbenam + sisa siang hari ini 🌅"),
+        ("!bulan",         "Fase bulan malam ini + countdown purnama 🌙"),
+        ("!surya",         "Kondisi matahari & cuaca antariksa ☀️"),
+        # Sistem
+        ("!infosistem",    "Status bot: CPU, RAM, disk & uptime 🧠"),
+        ("!ketinggian",    "Estimasi ketinggian dari panjang bayangan ⛰️"),
     ]
     CHUNK = 3
     groups = [CMDS[i:i+CHUNK] for i in range(0, len(CMDS), CHUNK)]
