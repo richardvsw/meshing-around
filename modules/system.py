@@ -2181,7 +2181,14 @@ def get_sysinfo(nodeID=0, deviceID=1):
     # trigger telemetry refresh
     raw = str(displayNodeTelemetry(nodeID, deviceID, userRequested=True))
     if raw == "-1" or raw == str(-1):
-        return "Mengumpulkan telemetri, coba lagi sebentar ⏳"
+        # reset throttle timer and retry once
+        try:
+            localTelemetryData[0][f'interface{deviceID}'] = 0
+            raw = str(displayNodeTelemetry(nodeID, deviceID, userRequested=True))
+        except Exception:
+            pass
+    if raw == "-1" or raw == str(-1):
+        raw = "numPacketsRx:0 numPacketsTx:0 ChUtil%:0 AirTx%:0"
 
     def _parse(key):
         import re

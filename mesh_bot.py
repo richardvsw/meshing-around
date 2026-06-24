@@ -14,6 +14,7 @@ from datetime import datetime
 from modules.log import logger, CustomFormatter, msgLogger, getPrettyTime
 import modules.settings as my_settings
 from modules.system import *
+_seen_packet_ids = {}  # packet_id -> timestamp, for dedup
 
 # list of commands to remove from the default list for DM only
 restrictedCommands = ["blackjack", "videopoker", "dopewars", "lemonstand", "golfsim", "mastermind", "hangman", "hamtest", "tictactoe", "tic-tac-toe", "quiz", "q:", "survey", "s:", "battleship"]
@@ -268,7 +269,8 @@ def handle_cmd(message, message_from_id, deviceID):
     total = len(groups)
     for idx, group in enumerate(groups, 1):
         lines = [f"{cmd} — {desc}" for cmd, desc in group]
-        msg = "\n".join(lines)
+        header = f"📋 Daftar Perintah [{idx}/{total}]"
+        msg = header + "\n" + "\n".join(lines)
         send_message(msg, 0, message_from_id, deviceID)
         import time as _time; _time.sleep(2)
     return ""
@@ -361,12 +363,35 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
     sender_name = get_name_from_number(message_from_id, "short", deviceID)
     bot_name = get_name_from_number(myNodeNum, "short", deviceID)
     hop_clean = hop.replace("Gateway","").replace("Direct","").replace("MQTT","").strip()
+    # extract relay node short name if present (e.g. "MQTT Relay:B9")
+    import re as _re
+    relay_match = _re.search(r'Relay:([0-9A-Fa-f]+)', hop)
+    relay_label = ""
+    if relay_match:
+        relay_hex = relay_match.group(1)
+        if relay_hex != 'OldFW':
+            # try to find node with matching last byte
+            try:
+                _iface = globals().get(f'interface{deviceID}')
+                if _iface and _iface.nodes:
+                    for _nid, _nd in _iface.nodes.items():
+                        _num = _nd.get('num', 0)
+                        if (_num & 0xFF) == int(relay_hex, 16):
+                            relay_label = get_name_from_number(_num, "short", deviceID)
+                            break
+            except Exception:
+                pass
+        if not relay_label:
+            relay_label = f"!..{relay_hex.lower()}"
     if "MQTT" in hop or "Gateway" in hop:
-        route = sender_name + " -[MQTT]-> " + bot_name
+        if relay_label:
+            route = f"{sender_name} → {relay_label} → MQTT → {bot_name}"
+        else:
+            route = f"{sender_name} → MQTT → {bot_name}"
     elif "Direct" in hop or "RF" in hop:
-        route = sender_name + " -[RF langsung]-> " + bot_name
+        route = f"{sender_name} -[RF langsung]→ {bot_name}"
     else:
-        route = sender_name + " -[" + hop_clean + "]-> " + bot_name
+        route = f"{sender_name} -[{hop_clean}]→ {bot_name}"
     msg += "\n🗺 " + route
     if float(snr) != 0 or float(rssi) != 0:
         msg += "\n📶 SNR:" + str(snr) + " RSSI:" + str(rssi)
@@ -1609,7 +1634,7 @@ def handle_sun(message_from_id, deviceID, channel_number, vox=False):
 
 def sysinfo(message, message_from_id, deviceID, isDM):
     if "?" in message:
-        return "sysinfo command returns system information."
+        return "Menampilkan status sistem: CPU, RAM, disk, uptime & statistik mesh."
     else:
         if enable_runShellCmd and file_monitor_enabled:
             # get the system information from the shell script
@@ -2211,6 +2236,15 @@ def onReceive(packet, interface):
             
             # Use packet id for threaded replies;
             packet_id = packet.get('id', None)
+            # Deduplicate: meshtasticd delivers MQTT packets twice
+            import time as _t
+            _now = _t.time()
+            _seen_packet_ids = {k: v for k, v in _seen_packet_ids.items() if _now - v < 10}
+            if packet_id and packet_id in _seen_packet_ids:
+                logger.debug(f"System: Duplicate packet {packet_id} ignored")
+                return
+            if packet_id:
+                _seen_packet_ids[packet_id] = _now
 
             # existing reply - unused for tracking
             replyIDSet = packet.get('replyIDSet', None)
