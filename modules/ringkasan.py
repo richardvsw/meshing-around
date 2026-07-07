@@ -1,0 +1,71 @@
+"""Flagship dashboard command — one compact snapshot combining gempa,
+gunung, kurs, and libur. Built only from modules that expose clean
+structured data (raw JSON / parsed lists), not modules whose only public
+function returns pre-formatted reply text — parsing formatted text a
+second time is fragile and breaks silently if that module's wording
+changes. Weather (!cuaca) and fuel prices (!hargabbm) are skipped for that
+reason: mesh_bot.py's handle_wxc() and modules/bbm.py's get_bbm_prices()
+only return final display text, no structured data to pull a single
+number from safely."""
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def get_ringkasan(message=None, message_from_id=None, deviceID=None):
+    lines = ["📊 Ringkasan Hari Ini", ""]
+
+    # ── Gempa ──────────────────────────────────────────────────────────────
+    try:
+        from modules.gempa import _fetch as _fetch_gempa, _URL_LATEST
+        g = _fetch_gempa(_URL_LATEST).get("Infogempa", {}).get("gempa", {})
+        if g:
+            wilayah = g.get("Wilayah", "?")
+            if len(wilayah) > 35:
+                wilayah = wilayah[:35].rsplit(" ", 1)[0] + "..."
+            lines.append(f"🌎 Gempa M{g.get('Magnitude','?')} {wilayah}")
+    except Exception as e:
+        logger.debug("ringkasan gempa error: %s", e)
+
+    # ── Gunung ─────────────────────────────────────────────────────────────
+    try:
+        from modules.gunung import _fetch_list
+        volcanoes = _fetch_list()
+        if volcanoes:
+            max_level = max(v["level"] for v in volcanoes)
+            if max_level >= 2:
+                label = {4: "AWAS", 3: "SIAGA", 2: "WASPADA"}[max_level]
+                count = sum(1 for v in volcanoes if v["level"] == max_level)
+                lines.append(f"🌋 {count} gunung {label}")
+    except Exception as e:
+        logger.debug("ringkasan gunung error: %s", e)
+
+    # ── Kurs ───────────────────────────────────────────────────────────────
+    try:
+        from modules.kurs import _fetch as _fetch_kurs
+        data = _fetch_kurs()
+        rates = data.get("rates", {})
+        idr_per_usd = rates.get("IDR")
+        if idr_per_usd:
+            lines.append(f"💵 USD Rp{idr_per_usd:,.0f}")
+    except Exception as e:
+        logger.debug("ringkasan kurs error: %s", e)
+
+    # ── Libur ──────────────────────────────────────────────────────────────
+    try:
+        from modules.libur import get_libur
+        libur_text = get_libur()
+        # get_libur() returns a multi-line block; compress to one line
+        parts = [p for p in libur_text.split("\n") if p.strip()]
+        if len(parts) >= 3:
+            when, name, rel = parts[-3], parts[-2], parts[-1]
+            lines.append(f"📅 {rel} ke {when} ({name})")
+    except Exception as e:
+        logger.debug("ringkasan libur error: %s", e)
+
+    if len(lines) <= 2:
+        return "❌ Gagal mengambil data ringkasan. Coba lagi nanti."
+
+    lines.append("")
+    lines.append("Detail: !gempa !gunung !kursrupiah !libur")
+    return "\n".join(lines)

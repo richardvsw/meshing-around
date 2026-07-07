@@ -176,6 +176,10 @@ from modules.alarm import get_alarm, ack_alarm
 from modules.p3k import get_p3k
 from modules.konversi import get_konversi
 from modules.morse import get_morse
+from modules.gunung import get_gunung
+from modules.libur import get_libur
+from modules.ringkasan import get_ringkasan
+trap_list = trap_list + ("gunung", "libur", "ringkasan")
 # LLM Configuration
 if llm_enabled:
     from modules.llm import * # from the spudgunman/meshing-around repo
@@ -780,10 +784,14 @@ def handleSentinelIgnore(nodeInt=1, nodeID=0, aor=False):
         sentryIgnoreList.remove(str(nodeID))
         logger.info(f"System: Removed {nodeID} from sentry ignore list")
 
+def _blen(s):
+    """UTF-8 byte length of string — use this everywhere chunk size is checked."""
+    return len(s.encode('utf-8'))
+
 def messageChunker(message):
     message_list = []
     try:
-        if len(message) > MESSAGE_CHUNK_SIZE:
+        if _blen(message) > MESSAGE_CHUNK_SIZE:
             # Split the message into parts by new lines
             parts = message.split('\n')
             for part in parts:
@@ -791,67 +799,62 @@ def messageChunker(message):
                 # remove empty parts
                 if not part:
                     continue
-                # if part is under the MESSAGE_CHUNK_SIZE, add it to the list
-                if len(part) < MESSAGE_CHUNK_SIZE:
+                # if part fits in one chunk, add it directly
+                if _blen(part) <= MESSAGE_CHUNK_SIZE:
                     message_list.append(part)
                 else:
-                    # split the part into chunks
+                    # split oversized part word-by-word
                     current_chunk = ''
-                    sentences = []
-                    sentence = ''
-                    for char in part:
-                        sentence += char
-                        # if char in '.!?':
-                        #     sentences.append(sentence.strip())
-                        #     sentence = ''
-                    if sentence:
-                        sentences.append(sentence.strip())
-
-                    for sentence in sentences:
-                        sentence = sentence.replace('  ', ' ')
-                        # remove empty sentences
-                        if not sentence:
+                    for word in part.split(' '):
+                        if not word:
                             continue
-                        # remove junk sentences and append to the previous sentence this may exceed the MESSAGE_CHUNK_SIZE by 3char
-                        if len(sentence) < 4:
-                            if current_chunk:
-                                current_chunk += sentence
-                            else:
-                                current_chunk = sentence
-                            continue
-
-                        # if sentence is too long, split it by words
-                        if len(current_chunk) + len(sentence) > MESSAGE_CHUNK_SIZE:
-                            if current_chunk:
-                                message_list.append(current_chunk)
-                            current_chunk = sentence
+                        candidate = (current_chunk + ' ' + word).strip() if current_chunk else word
+                        if _blen(candidate) <= MESSAGE_CHUNK_SIZE:
+                            current_chunk = candidate
                         else:
                             if current_chunk:
-                                current_chunk += ' ' + sentence
-                            else:
-                                current_chunk = sentence
+                                message_list.append(current_chunk)
+                            # word itself may exceed limit — hard-split by bytes
+                            current_chunk = word
+                            while _blen(current_chunk) > MESSAGE_CHUNK_SIZE:
+                                # split at last space before byte limit
+                                encoded = current_chunk.encode('utf-8')
+                                split_at = MESSAGE_CHUNK_SIZE
+                                while split_at > 0 and (encoded[split_at] & 0xC0) == 0x80:
+                                    split_at -= 1
+                                # walk back to last space so we don't cut mid-word
+                                sp = encoded.rfind(b' ', 0, split_at)
+                                if sp > 0:
+                                    split_at = sp
+                                message_list.append(encoded[:split_at].decode('utf-8').rstrip())
+                                current_chunk = encoded[split_at:].decode('utf-8').strip()
                     if current_chunk:
                         message_list.append(current_chunk)
 
-            # Consolidate any adjacent messages that can fit in a single chunk.
+            # Consolidate adjacent chunks that fit together
             idx = 0
             while idx < len(message_list) - 1:
-                if len(message_list[idx]) + len(message_list[idx+1]) < MESSAGE_CHUNK_SIZE:
-                    message_list[idx] += '\n' + message_list[idx+1]
+                combined = message_list[idx] + '\n' + message_list[idx+1]
+                if _blen(combined) <= MESSAGE_CHUNK_SIZE:
+                    message_list[idx] = combined
                     del message_list[idx+1]
                 else:
                     idx += 1
 
-            # Ensure no chunk exceeds MESSAGE_CHUNK_SIZE
+            # Final safety pass — hard-split anything still too large, always at word boundary
             final_message_list = []
             for chunk in message_list:
-                while len(chunk) > MESSAGE_CHUNK_SIZE:
-                    # Find the last space within the chunk size limit
-                    split_index = chunk.rfind(' ', 0, MESSAGE_CHUNK_SIZE)
-                    if split_index == -1:
-                        split_index = MESSAGE_CHUNK_SIZE
-                    final_message_list.append(chunk[:split_index])
-                    chunk = chunk[split_index:].strip()
+                while _blen(chunk) > MESSAGE_CHUNK_SIZE:
+                    encoded = chunk.encode('utf-8')
+                    split_at = MESSAGE_CHUNK_SIZE
+                    while split_at > 0 and (encoded[split_at] & 0xC0) == 0x80:
+                        split_at -= 1
+                    # prefer splitting at a space
+                    sp = encoded.rfind(b' ', 0, split_at)
+                    if sp > 0:
+                        split_at = sp
+                    final_message_list.append(encoded[:split_at].decode('utf-8').rstrip())
+                    chunk = encoded[split_at:].decode('utf-8').strip()
                 if chunk:
                     final_message_list.append(chunk)
 
@@ -1613,7 +1616,9 @@ def consumeMetadata(packet, rxNode=0, channel=-1):
     if packet_type == 'TELEMETRY_APP':
         if debugMetadata and 'TELEMETRY_APP' not in metadataFilter:
             print(f"DEBUG TELEMETRY_APP: {packet}\n\n")
-        telemetry_packet = packet['decoded']['telemetry']
+        telemetry_packet = packet.get('decoded', {}).get('telemetry')
+        if not telemetry_packet:
+            return
         # Track device metrics (battery, uptime)
         if telemetry_packet.get('deviceMetrics'):
             deviceMetrics = telemetry_packet['deviceMetrics']

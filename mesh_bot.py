@@ -20,6 +20,18 @@ _seen_packet_ids = {}  # packet_id -> timestamp, for dedup
 restrictedCommands = ["blackjack", "videopoker", "dopewars", "lemonstand", "golfsim", "mastermind", "hangman", "hamtest", "tictactoe", "tic-tac-toe", "quiz", "q:", "survey", "s:", "battleship"]
 restrictedResponse = "🤖only available in a Direct Message📵" # "" for none
 
+def _ch_reply(text, ch, from_id, device_id, is_dm):
+    if not text:
+        return ""
+    if is_dm:
+        return text
+    if my_settings.useDMForResponse:
+        send_message(text, ch, from_id, device_id)
+    else:
+        send_message(text, ch, 0, device_id)
+    return ""
+
+
 def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_number, deviceID, isDM):
     global cmdHistory
     ack_alarm(message_from_id)  # silence any active alarm
@@ -30,9 +42,9 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     # Command List processes system.trap_list. system.messageTrap() sends any commands to here
     default_commands = {
     "ack": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
-    "ask:": lambda: handle_llm(message_from_id, channel_number, deviceID, message, publicChannel),
-    "tanya": lambda: handle_llm(message_from_id, channel_number, deviceID, message, publicChannel),
-    "askai": lambda: handle_llm(message_from_id, channel_number, deviceID, message, publicChannel),
+    "ask:": lambda: _ch_reply(handle_llm(message_from_id, channel_number, deviceID, message, publicChannel), channel_number, message_from_id, deviceID, isDM),
+    "tanya": lambda: _ch_reply(handle_llm(message_from_id, channel_number, deviceID, message, publicChannel), channel_number, message_from_id, deviceID, isDM),
+    "askai": lambda: _ch_reply(handle_llm(message_from_id, channel_number, deviceID, message, publicChannel), channel_number, message_from_id, deviceID, isDM),
     "bannode": lambda: handle_bbsban(message, message_from_id, isDM),
     "battleship": lambda: handleBattleship(message, message_from_id, deviceID),
     "bbsack": lambda: bbs_sync_posts(message, message_from_id, deviceID),
@@ -94,7 +106,7 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "cartremove": lambda: handle_inventory(message, message_from_id, deviceID),
     "cartsell": lambda: handle_inventory(message, message_from_id, deviceID),
     "joke": lambda: tell_joke(message_from_id),
-    "lelucon": lambda: tell_joke(message_from_id),
+    "lelucon": lambda: _ch_reply(tell_joke(message_from_id), channel_number, message_from_id, deviceID, isDM),
     "humor": lambda: tell_joke(message_from_id),
     "latest": lambda: get_newsAPI(message, message_from_id, deviceID, isDM),
     "leaderboard": lambda: get_mesh_leaderboard(message, message_from_id, deviceID),
@@ -109,8 +121,9 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "messages": lambda: handle_messages(message, deviceID, channel_number, msg_history, publicChannel, isDM),
     "arsip": lambda: handle_messages(message, deviceID, channel_number, msg_history, publicChannel, isDM),
     "moon": lambda: handle_moon(message_from_id, deviceID, channel_number),
+    "bulan": lambda: handle_moon(message_from_id, deviceID, channel_number),
     "motd": lambda: handle_motd(message, message_from_id, isDM),
-    "pesan": lambda: handle_motd(message, message_from_id, isDM),
+    "pesan": lambda: _ch_reply(handle_motd(message, message_from_id, isDM), channel_number, message_from_id, deviceID, isDM),
     "mwx": lambda: handle_mwx(message_from_id, deviceID, channel_number),
     "ping": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "sinyal": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
@@ -123,17 +136,20 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "readnews": lambda: handleNews(message_from_id, deviceID, message, isDM),
     "readrss": lambda: get_rss_feed(message),
     "berita": lambda: get_rss_feed(message),
-    "hargabbm": lambda: get_bbm_prices(message, message_from_id, deviceID),
-    "bbmharga": lambda: get_bbm_prices(message, message_from_id, deviceID),
+    "hargabbm": lambda: _ch_reply(get_bbm_prices(message, message_from_id, deviceID), channel_number, message_from_id, deviceID, isDM),
+    "bbmharga": lambda: _ch_reply(get_bbm_prices(message, message_from_id, deviceID), channel_number, message_from_id, deviceID, isDM),
     "kursrupiah": lambda: get_kurs_rupiah(message),
     "kurs": lambda: get_kurs_rupiah(message),
-    "fifa2026": lambda: get_fifa2026(message),
-    "fifa": lambda: get_fifa2026(message),
-    "gempa":     lambda: get_gempa(message),
+    "fifa2026": lambda: _ch_reply(get_fifa2026(message), channel_number, message_from_id, deviceID, isDM),
+    "fifa": lambda: _ch_reply(get_fifa2026(message), channel_number, message_from_id, deviceID, isDM),
+    "gempa":     lambda: get_gempa(message, message_from_id, deviceID, my_settings),
     "alarm":     lambda: get_alarm(message, message_from_id),
     "p3k":       lambda: get_p3k(message),
     "konversi":  lambda: get_konversi(message),
     "morse":     lambda: get_morse(message),
+    "gunung":    lambda: get_gunung(message, message_from_id, deviceID),
+    "libur":     lambda: get_libur(message),
+    "ringkasan": lambda: get_ringkasan(message, message_from_id, deviceID),
 
     "riverflow": lambda: handle_riverFlow(message, message_from_id, deviceID),
     "rlist": lambda: handle_repeaterQuery(message_from_id, deviceID, channel_number),
@@ -148,8 +164,6 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "matahari": lambda: handle_sun(message_from_id, deviceID, channel_number),
     "survey": lambda: surveyHandler(message, message_from_id, deviceID),
     "s:": lambda: surveyHandler(message, message_from_id, deviceID),
-    "sysinfo": lambda: sysinfo(message, message_from_id, deviceID, isDM),
-    "infosistem": lambda: sysinfo(message, message_from_id, deviceID, isDM),
     "test": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "testing": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "tictactoe": lambda: handleTicTacToe(message, message_from_id, deviceID),
@@ -231,49 +245,10 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     return bot_response
 
 def handle_cmd(message, message_from_id, deviceID):
-    # Command list with eng/indo aliases, 3 per message
-    CMDS = [
-        # Andalan utama
-        ("!ping",          "Bot masih hidup? Cek di sini 📡"),
-        ("!cuaca",         "Cuaca real-time di lokasimu ☀️🌧️"),
-        ("!hargabbm",      "Harga BBM hari ini per provinsi ⛽ — auto-detect lokasimu!"),
-        ("!kursrupiah",    "Kurs Rupiah vs 9 mata uang dunia 💱"),
-        ("!fifa2026",      "Skor & jadwal FIFA 2026 ⚽ — live update tiap 2 menit!"),
-        ("!gempa",       "Info gempa terkini dari BMKG"),
-        ("!alarm HH:MM", "Set alarm, bot DM sampai kamu balas"),
-        ("!p3k",         "Panduan pertolongan pertama"),
-        ("!konversi",    "Konversi satuan: jarak, berat, suhu, dll"),
-        ("!morse",       "Encode/decode kode morse"),
-        # Kenali mesh-mu
-        ("!siapa",         "Siapa kamu di mesh? ID, sinyal & lokasi 🧑‍💻"),
-        ("!dimana",        "Di mana kamu? Bot balas + link Google Maps 📍"),
-        ("!daftar",        "Siapa aja yang terdengar di mesh sekarang? 📡"),
-        ("!peringkat",     "Node paling jauh, paling aktif — cek ranking 🏆"),
-        ("!jarak",         "Tracking jarak tempuhmu — panggil lagi setelah bergerak 🚗"),
-        # Info & hiburan
-        ("!berita",        "Headline terkini: Tempo, CNN & BBC Indonesia 📰"),
-        ("!tanya <teks>",  "Tanya AI apa aja, dijawab via DM 🤖"),
-        ("!cari <kata>",   "Cari info di Wikipedia bahasa Indonesia 🔍"),
-        ("!lelucon",       "Joke & tebak-tebakan acak 😀"),
-        ("!pesan",         "Motivasi & salam harian dari bot 💬"),
-        # Langit & alam
-        ("!matahari",      "Terbit & terbenam + sisa siang hari ini 🌅"),
-        ("!bulan",         "Fase bulan malam ini + countdown purnama 🌙"),
-        ("!surya",         "Kondisi matahari & cuaca antariksa ☀️"),
-        # Sistem
-        ("!infosistem",    "Status bot: CPU, RAM, disk & uptime 🧠"),
-        ("!ketinggian",    "Estimasi ketinggian dari panjang bayangan ⛰️"),
-    ]
-    CHUNK = 3
-    groups = [CMDS[i:i+CHUNK] for i in range(0, len(CMDS), CHUNK)]
-    total = len(groups)
-    for idx, group in enumerate(groups, 1):
-        lines = [f"{cmd} — {desc}" for cmd, desc in group]
-        header = f"📋 Daftar Perintah [{idx}/{total}]"
-        msg = header + "\n" + "\n".join(lines)
-        send_message(msg, 0, message_from_id, deviceID)
-        import time as _time; _time.sleep(2)
-    return ""
+    # command list + response logic lives in cmd_catalog.py (shared, pure,
+    # no side effects) so the rivbot-ui simulator can call the exact same code
+    from cmd_catalog import handle_cmd_pure
+    return handle_cmd_pure(message)
 
 def isPlayingGame(message_from_id):
     global gameTrackers
@@ -2236,10 +2211,11 @@ def onReceive(packet, interface):
             
             # Use packet id for threaded replies;
             packet_id = packet.get('id', None)
+            global _seen_packet_ids
             # Deduplicate: meshtasticd delivers MQTT packets twice
             import time as _t
             _now = _t.time()
-            _seen_packet_ids = {k: v for k, v in _seen_packet_ids.items() if _now - v < 10}
+            _seen_packet_ids = {k: v for k, v in _seen_packet_ids.items() if _now - v < 60}
             if packet_id and packet_id in _seen_packet_ids:
                 logger.debug(f"System: Duplicate packet {packet_id} ignored")
                 return
@@ -2389,8 +2365,8 @@ def onReceive(packet, interface):
                         logger.info(f"Device:{rxNode} Channel:{channel_number} " + CustomFormatter.green + "ReceivedChannel: " + CustomFormatter.white + f"{message_log_string} " + CustomFormatter.purple +\
                                     "From: " + CustomFormatter.white + f"{get_name_from_number(message_from_id, 'long', rxNode)}")
                         if my_settings.useDMForResponse:
-                            # respond to channel message via direct message
-                            send_message(auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM), channel_number, message_from_id, rxNode, reply_id=packet_id)
+                            # respond to channel message via direct message (no reply_id — avoids threading back into LongFast)
+                            send_message(auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM), channel_number, message_from_id, rxNode)
                         else:
                             # or respond to channel message on the channel itself
                             if channel_number == my_settings.publicChannel and my_settings.antiSpam:
@@ -2547,6 +2523,10 @@ async def idleFollowupLoop():
 
 
 async def greetingBroadcastLoop():
+    # Respect config — rivbot-ui controls all broadcasts when this is False
+    if not my_settings.config.getboolean('scheduler', 'greeting_broadcast_enabled', fallback=True):
+        import logging as _l; _l.getLogger(__name__).info('System: greetingBroadcastLoop disabled via config')
+        return
     import random
     from datetime import datetime, timezone, timedelta
     from data.greeting_banks import (

@@ -75,13 +75,10 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
     type = ''
 
     if "ping" in message.lower():
-        msg = "🏓PONG"
+        msg = random.choice(["🏓 Nyambung bro!", "🏓 Sinyal ada nih!", "🏓 Waduh, ping-mu nyampe juga ternyata!", "🏓 Hei, masih hidup nih!"])
         type = "🏓PING"
     elif "test" in message.lower() or "testing" in message.lower():
-        msg = random.choice(["🎙Testing 1,2,3", "🎙Testing",\
-                             "🎙Testing, testing",\
-                             "🎙Ah-wun, ah-two...", "🎙Is this thing on?",\
-                             "🎙Roger that!",])
+        msg = random.choice(["🎙Satu dua tiga, coba-coba!", "🎙Halo? Ada orang?", "🎙Testing... kalau denger bilang dong!", "🎙Oke, ini nyampe ga nih?",])
         type = "🎙TEST"
     elif "ack" in message.lower():
         msg = random.choice(["✋ACK-ACK!\n", "✋Ack to you!\n"])
@@ -95,21 +92,19 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
     else:
         msg = "🔊 Can you hear me now?"
 
-    # append SNR/RSSI or hop info
-    if hop.startswith("Gateway") or hop.startswith("MQTT"):
-        msg += " [GW]"
-    elif hop.startswith("Direct"):
-        msg += " [RF]"
+    # build route display
+    sender_name = get_name_from_number(message_from_id, "short", deviceID)
+    bot_name = get_name_from_number(myNodeNum1, "short", 1)
+    hop_clean = hop.replace("Gateway","").replace("Direct","").replace("MQTT","").strip()
+    if "MQTT" in hop or "Gateway" in hop:
+        route = sender_name + " -[MQTT]-> " + bot_name
+    elif "Direct" in hop or "RF" in hop:
+        route = sender_name + " -[RF langsung]-> " + bot_name
     else:
-        #flood
-        msg += " [F]"
-    
-    if (float(snr) != 0 or float(rssi) != 0) and "Hop" not in hop:
-        msg += f"\nSNR:{snr} RSSI:{rssi}"
-    elif "Hop" in hop:
-        # janky, remove the words Gateway or MQTT if present
-        hop = hop.replace("Gateway", "").replace("Direct", "").replace("MQTT", "").strip()
-        msg += f"\n{hop} "
+        route = sender_name + " -[" + hop_clean + "]-> " + bot_name
+    msg += "\n🗺 " + route
+    if float(snr) != 0 or float(rssi) != 0:
+        msg += "\n📶 SNR:" + str(snr) + " RSSI:" + str(rssi)
 
     if "@" in message:
         msg = msg + " @" + message.split("@")[1]

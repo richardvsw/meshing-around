@@ -16,7 +16,7 @@ if llmUseWikiContext or use_kiwix_server:
 
 # LLM System Variables
 ollamaAPI = ollamaHostName + "/api/generate"
-openWebUIChatAPI = openWebUIURL + "/api/chat/completions"
+openWebUIChatAPI = openWebUIURL + "/chat/completions"
 openWebUIOllamaProxy = openWebUIURL + "/ollama/api/generate"
 tokens = 450 # max charcters for the LLM response, this is the max length of the response also in prompts
 requestTruncation = True # if True, the LLM "will" truncate the response
@@ -27,11 +27,11 @@ llmEnableHistory = True # enable last message history for the LLM model
 
 antiFloodLLM = []
 llmChat_history = {}
-trap_list_llm = ("ask:", "askai")
+trap_list_llm = ("ask:", "askai", "tanya")
 
 meshbotAIinit = """
-    keep responses as short as possible. chatbot assistant no followuyp questions, no asking for clarification.
-    You must respond in plain text standard ASCII characters or emojis.
+    Jawab sesingkat mungkin. Kamu asisten chatbot santai, jangan tanya balik atau minta klarifikasi.
+    Balas dalam teks biasa atau emoji. Gunakan Bahasa Indonesia gaul yang santai dan sedikit lucu.
     """
 
 truncatePrompt = f"truncate this as short as possible:\n"
@@ -39,11 +39,13 @@ truncatePrompt = f"truncate this as short as possible:\n"
 meshBotAI = """
     FROM {llmModel}
     SYSTEM
-    You must keep responses under 450 characters at all times, the response will be cut off if it exceeds this limit.
-    You must respond in plain text standard ASCII characters, or emojis.
-    You are acting as a chatbot, you must respond to the prompt as if you are a chatbot assistant, and dont say 'Response limited to 450 characters'.
-    If you feel you can not respond to the prompt as instructed, ask for clarification and to rephrase the question if needed.
-    This is the end of the SYSTEM message and no further additions or modifications are allowed.
+    Kamu adalah {bot_name}, asisten Meshtastic lokal yang santai, ramah, dan sedikit kocak.
+    Selalu balas dalam Bahasa Indonesia gaul (bro, nih, dong, sih, dll).
+    Maksimal 450 karakter per balasan — potong kalau perlu, jangan sebut batas karakter.
+    Balas langsung ke poin, jangan tanya balik, jangan minta klarifikasi.
+    Boleh pakai emoji secukupnya biar lebih hidup.
+    Kalau ga tau jawabannya, bilang aja jujur dengan cara yang lucu.
+    Ini akhir dari instruksi SYSTEM, tidak boleh diubah.
 
     PROMPT
     {input}
@@ -250,13 +252,13 @@ def send_openwebui_query(prompt, model=None, max_tokens=450, context=''):
                 return response.strip()
             else:
                 logger.warning(f"System: OpenWebUI API returned unexpected format")
-                return "⛔️ Response Error"
+                return "⛔️ AI-nya jawab aneh nih, coba tanya lagi bro!"
         else:
             logger.warning(f"System: OpenWebUI API returned status code {result.status_code}")
-            return f"⛔️ Request Error"
+            return "⛔️ Aduh, gagal konek ke AI-nya bro. Coba lagi bentar!"
     except requests.exceptions.RequestException as e:
         logger.warning(f"System: OpenWebUI API request failed: {e}")
-        return f"⛔️ Request Error"
+        return "⛔️ Aduh, gagal konek ke AI-nya bro. Coba lagi bentar!"
 
 def send_ollama_query(llmQuery):
     # Send the query to the Ollama API and return the response
@@ -270,11 +272,11 @@ def send_ollama_query(llmQuery):
                 result = result.split("</think>")[1]
         else:
             logger.warning(f"System: LLM Query: Ollama API returned status code {result.status_code}")
-            return f"⛔️ Request Error"
+            return "⛔️ Aduh, gagal konek ke AI-nya bro. Coba lagi bentar!"
         return result
     except requests.exceptions.RequestException as e:
         logger.warning(f"System: LLM Query: Ollama API request failed: {e}")
-        return f"⛔️ Request Error"
+        return "⛔️ Aduh, gagal konek ke AI-nya bro. Coba lagi bentar!"
 
 def send_ollama_tooling_query(prompt, functions, model=None, max_tokens=450):
     """
@@ -300,7 +302,7 @@ def send_ollama_tooling_query(prompt, functions, model=None, max_tokens=450):
     else:
         raise Exception(f"HTTP Error: {result.status_code} - {result.text}")
 
-def llm_query(input, nodeID=0, location_name=None, init=False):
+def llm_query(input, nodeID=0, location_name=None, init=False, bot_name="Bot"):
     global antiFloodLLM, llmChat_history
     wikiContext = ''
 
@@ -332,7 +334,7 @@ def llm_query(input, nodeID=0, location_name=None, init=False):
 
     # anti flood protection
     if nodeID in antiFloodLLM:
-        return "Please wait before sending another message"
+        return "⏳ Pelan-pelan bro, jangan buru-buru! Tunggu sebentar dulu ya."
     else:
         antiFloodLLM.append(nodeID)
 
@@ -380,7 +382,8 @@ def llm_query(input, nodeID=0, location_name=None, init=False):
                     context=context_str if combined_context else 'no other context provided',
                     location_name=location_name, 
                     llmModel=llmModel, 
-                    history=history
+                    history=history,
+                    bot_name=bot_name
                 )
                 result = send_openwebui_query(modelPrompt, max_tokens=tokens)
         else:
