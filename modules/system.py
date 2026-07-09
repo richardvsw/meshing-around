@@ -1,7 +1,9 @@
 # helper functions and init for system related tasks
 # K7MHI Kelly Keeton 2024
 
+import threading
 import meshtastic.serial_interface #pip install meshtastic or use launch.sh for venv
+from meshtastic import portnums_pb2
 import meshtastic.tcp_interface
 import meshtastic.ble_interface
 import time
@@ -788,10 +790,21 @@ def _blen(s):
     """UTF-8 byte length of string — use this everywhere chunk size is checked."""
     return len(s.encode('utf-8'))
 
+# Bytes reserved for the "(i/n) " prefix labeled onto every chunk of a
+# multi-chunk message, so labeled chunks never exceed MESSAGE_CHUNK_SIZE.
+CHUNK_LABEL_RESERVE = 9
+# How long to wait for a chunk's delivery ack before sending the next chunk
+# anyway. Chunks are independent unordered packets on the mesh — without
+# this, chunk N+1 can be transmitted (and arrive) before chunk N finishes
+# retrying, scrambling the reassembled message on the receiving client.
+CHUNK_ACK_TIMEOUT = 10
+
 def messageChunker(message):
     message_list = []
     try:
         if _blen(message) > MESSAGE_CHUNK_SIZE:
+            # Reserve room for the "(i/n) " prefix labeled onto each chunk below.
+            limit = MESSAGE_CHUNK_SIZE - CHUNK_LABEL_RESERVE
             # Split the message into parts by new lines
             parts = message.split('\n')
             for part in parts:
@@ -800,7 +813,7 @@ def messageChunker(message):
                 if not part:
                     continue
                 # if part fits in one chunk, add it directly
-                if _blen(part) <= MESSAGE_CHUNK_SIZE:
+                if _blen(part) <= limit:
                     message_list.append(part)
                 else:
                     # split oversized part word-by-word
@@ -809,17 +822,17 @@ def messageChunker(message):
                         if not word:
                             continue
                         candidate = (current_chunk + ' ' + word).strip() if current_chunk else word
-                        if _blen(candidate) <= MESSAGE_CHUNK_SIZE:
+                        if _blen(candidate) <= limit:
                             current_chunk = candidate
                         else:
                             if current_chunk:
                                 message_list.append(current_chunk)
                             # word itself may exceed limit — hard-split by bytes
                             current_chunk = word
-                            while _blen(current_chunk) > MESSAGE_CHUNK_SIZE:
+                            while _blen(current_chunk) > limit:
                                 # split at last space before byte limit
                                 encoded = current_chunk.encode('utf-8')
-                                split_at = MESSAGE_CHUNK_SIZE
+                                split_at = limit
                                 while split_at > 0 and (encoded[split_at] & 0xC0) == 0x80:
                                     split_at -= 1
                                 # walk back to last space so we don't cut mid-word
@@ -835,7 +848,7 @@ def messageChunker(message):
             idx = 0
             while idx < len(message_list) - 1:
                 combined = message_list[idx] + '\n' + message_list[idx+1]
-                if _blen(combined) <= MESSAGE_CHUNK_SIZE:
+                if _blen(combined) <= limit:
                     message_list[idx] = combined
                     del message_list[idx+1]
                 else:
@@ -844,9 +857,9 @@ def messageChunker(message):
             # Final safety pass — hard-split anything still too large, always at word boundary
             final_message_list = []
             for chunk in message_list:
-                while _blen(chunk) > MESSAGE_CHUNK_SIZE:
+                while _blen(chunk) > limit:
                     encoded = chunk.encode('utf-8')
-                    split_at = MESSAGE_CHUNK_SIZE
+                    split_at = limit
                     while split_at > 0 and (encoded[split_at] & 0xC0) == 0x80:
                         split_at -= 1
                     # prefer splitting at a space
@@ -858,9 +871,15 @@ def messageChunker(message):
                 if chunk:
                     final_message_list.append(chunk)
 
+            # Label each chunk with its position, e.g. "(2/3) ...", so the
+            # reader can reassemble the right order even when the mesh
+            # delivers independent packets out of sequence.
+            num_chunks = len(final_message_list)
+            if num_chunks > 1:
+                final_message_list = [f"({i+1}/{num_chunks}) {c}" for i, c in enumerate(final_message_list)]
+
             # Calculate the total length of the message
             total_length = sum(len(chunk) for chunk in final_message_list)
-            num_chunks = len(final_message_list)
             logger.debug(f"System: Splitting #chunks: {num_chunks}, Total length: {total_length}")
             return final_message_list
 
@@ -877,6 +896,7 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
 
     try:
         def _send_with_reply(**kwargs):
+            onResponse = kwargs.pop('onResponse', None)
             # For threaded replies, send as DATA payload to match Meshtastic inline-reply behavior. no API call today.
             if reply_id is not None:
                 text_payload = kwargs.pop('text', '')
@@ -893,9 +913,28 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
                 }
                 if kwargs.get('destinationId'):
                     data_kwargs['destinationId'] = kwargs.get('destinationId')
+                if onResponse is not None:
+                    data_kwargs['onResponse'] = onResponse
+                    # sendText's onResponse only fires for app-level responses;
+                    # a plain delivery ACK needs ackPermitted=True to trigger it.
+                    data_kwargs['onResponseAckPermitted'] = True
                 # send the data payload with the replyId for threading
                 return interface.sendData(raw_payload, replyId=reply_id, **data_kwargs)
-            # Otherwise, send as normal text message
+            # Otherwise, send as normal text message. sendText() doesn't expose
+            # onResponseAckPermitted, so go through sendData directly when we
+            # need the callback to fire on a plain ACK (the common case here).
+            if onResponse is not None:
+                text_payload = kwargs.pop('text', '')
+                raw_payload = text_payload.encode('utf-8') if isinstance(text_payload, str) else text_payload
+                return interface.sendData(
+                    raw_payload,
+                    destinationId=kwargs.get('destinationId', meshtastic.BROADCAST_ADDR),
+                    portNum=portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+                    wantAck=kwargs.get('wantAck', False),
+                    onResponse=onResponse,
+                    onResponseAckPermitted=True,
+                    channelIndex=kwargs.get('channelIndex', ch),
+                )
             return interface.sendText(**kwargs)
 
         # Force chunking and log if message exceeds maxBuffer
@@ -912,13 +951,18 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
             # Send the message to the channel or DM
             total_length = sum(len(chunk) for chunk in message_list)
             num_chunks = len(message_list)
-            for m in message_list:
-                chunkOf = f"{message_list.index(m)+1}/{num_chunks}"
+            for idx, m in enumerate(message_list):
+                chunkOf = f"{idx+1}/{num_chunks}"
+                ack_event = threading.Event()
+
+                def _on_chunk_ack(packet, _event=ack_event):
+                    _event.set()
+
                 if nodeid == 0:
                     # Send to channel
                     if wantAck:
                         logger.info(f"Device:{nodeInt} Channel:{ch} " + CustomFormatter.red + f"req.ACK " + f"Chunker{chunkOf} SendingChannel: " + CustomFormatter.white + m.replace('\n', ' '))
-                        _send_with_reply(text=m, channelIndex=ch, wantAck=True)
+                        _send_with_reply(text=m, channelIndex=ch, wantAck=True, onResponse=_on_chunk_ack)
                     else:
                         logger.info(f"Device:{nodeInt} Channel:{ch} " + CustomFormatter.red + f"Chunker{chunkOf} SendingChannel: " + CustomFormatter.white + m.replace('\n', ' '))
                         _send_with_reply(text=m, channelIndex=ch)
@@ -927,17 +971,27 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
                     if wantAck:
                         logger.info(f"Device:{nodeInt} " + CustomFormatter.red + f"req.ACK " + f"Chunker{chunkOf} Sending DM: " + CustomFormatter.white + m.replace('\n', ' ') + CustomFormatter.purple +\
                                  " To: " + CustomFormatter.white + f"{get_name_from_number(nodeid, 'long', nodeInt)}")
-                        _send_with_reply(text=m, channelIndex=ch, destinationId=nodeid, wantAck=True)
+                        _send_with_reply(text=m, channelIndex=ch, destinationId=nodeid, wantAck=True, onResponse=_on_chunk_ack)
                     else:
                         logger.info(f"Device:{nodeInt} " + CustomFormatter.red + f"Chunker{chunkOf} Sending DM: " + CustomFormatter.white + m.replace('\n', ' ') + CustomFormatter.purple +\
                                     " To: " + CustomFormatter.white + f"{get_name_from_number(nodeid, 'long', nodeInt)}")
                         _send_with_reply(text=m, channelIndex=ch, destinationId=nodeid)
 
                 # Throttle the message sending to prevent spamming the device
-                if (message_list.index(m)+1) % 4 == 0:
+                if (idx+1) % 4 == 0:
                     time.sleep(responseDelay + 1)
-                    if (message_list.index(m)+1) % 5 == 0:
+                    if (idx+1) % 5 == 0:
                         logger.warning(f"System: throttling rate Interface{nodeInt} on {chunkOf}")
+
+                is_last_chunk = (idx == num_chunks - 1)
+                if wantAck and not is_last_chunk:
+                    # Hold off on the next chunk until this one is actually
+                    # delivered (or we time out) — chunks are independent,
+                    # unordered packets on the mesh, so sending the next one
+                    # before this one lands is what scrambles the reassembled
+                    # message on the receiving client.
+                    if not ack_event.wait(timeout=CHUNK_ACK_TIMEOUT):
+                        logger.warning(f"System: Chunker{chunkOf} ack timed out after {CHUNK_ACK_TIMEOUT}s, sending next chunk anyway")
 
                 # wait an amount of time between sending each split message
                 time.sleep(splitDelay)
