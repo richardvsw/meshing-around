@@ -41,12 +41,25 @@ def _fetch():
     now = time.time()
     if _CACHE and (now - _CACHE_TIME) < _CACHE_TTL:
         return _CACHE
-    req = urllib.request.Request(_API_URL, headers={"User-Agent": "Mozilla/5.0"})
-    r = urllib.request.urlopen(req, timeout=10)
-    data = json.loads(r.read())
-    _CACHE = data
-    _CACHE_TIME = now
-    return data
+    from modules.cache_status import record_status
+    try:
+        req = urllib.request.Request(_API_URL, headers={"User-Agent": "Mozilla/5.0"})
+        r = urllib.request.urlopen(req, timeout=10)
+        data = json.loads(r.read())
+        _CACHE = data
+        _CACHE_TIME = now
+        record_status("kurs", ok=True)
+        return data
+    except Exception as e:
+        record_status("kurs", ok=False, error=e)
+        raise
+
+
+def refresh():
+    """Force a fresh fetch, bypassing TTL — for external manual-refresh triggers."""
+    global _CACHE_TIME
+    _CACHE_TIME = 0
+    return _fetch()
 
 
 def get_kurs_rupiah(message):

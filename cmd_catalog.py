@@ -7,8 +7,7 @@ CMDS = [
     ("!ping",          "Bot masih hidup? Cek di sini 📡"),
     # Informasi
     ("!cuaca",         "Cuaca real-time di lokasimu ☀️🌧️"),
-    ("!gempa",       "Info gempa terkini dari BMKG"),
-    ("!gunung",        "Status gunung api PVMBG - !gunung <nama>/aktif/awas/dekat 🌋"),
+    ("!bencana",       "Ringkasan bencana: gempa, gunung, banjir 🚨"),
     ("!berita",        "Headline terkini: Tempo, CNN & BBC Indonesia 📰"),
     ("!libur",         "Libur nasional berikutnya + hitung mundur 📅"),
     # Ekonomi
@@ -32,9 +31,11 @@ CMDS = [
     ("!pesan",         "Motivasi & salam harian dari bot 💬"),
     # AI & pencarian
     ("!tanya <teks>",  "Tanya AI apa aja, dijawab via DM 🤖"),
-    ("!cari <kata>",   "Cari info di Wikipedia bahasa Indonesia 🔍 (alias: !wiki)"),
+    ("!wiki <kata>",   "Cari info di Wikipedia bahasa Indonesia 🔍 (alias: !cari)"),
     # Darurat
     ("!p3k",         "Panduan pertolongan pertama"),
+    ("!darurat",     "Nomor kontak darurat nasional (112, SAR, polisi, dll) 🚨"),
+    ("!pesawat [nomor]", "Pesawat terdekat, atau cari by nomor penerbangan ✈️"),
     # Lainnya
     ("!lelucon",       "Joke & tebak-tebakan acak 😀"),
     ("!fifa2026",      "Skor & jadwal FIFA 2026 ⚽ — live update tiap 2 menit!"),
@@ -46,21 +47,28 @@ CMDS = [
 # never risks breaking !cmd <nama>.
 CATEGORIES = [
     ("📊", ["ringkasan", "ping"]),
-    ("🌤",  ["cuaca", "gempa", "gunung", "berita", "libur"]),
+    ("🌤",  ["cuaca", "bencana", "berita", "libur"]),
     ("💰", ["hargabbm", "kursrupiah"]),
     ("🧭", ["konversi", "jarak", "alarm", "morse", "ketinggian"]),
     ("🌌", ["matahari", "bulan", "surya"]),
     ("👥", ["siapa", "dimana", "daftar", "peringkat", "pesan"]),
-    ("🤖", ["tanya", "cari"]),
-    ("🏥", ["p3k"]),
+    ("🤖", ["tanya", "wiki"]),
+    ("🏥", ["p3k", "darurat"]),
+    ("✈️", ["pesawat"]),
     ("🎉", ["lelucon", "fifa2026"]),
 ]
+
+
+# Old command names that now display under a different primary name in
+# CMDS, kept resolvable here so "!cmd <old name>" still finds the entry.
+_ALIASES = {"cari": "wiki"}
 
 
 def handle_cmd_pure(message: str) -> str:
     """Same logic as mesh_bot.handle_cmd() but with no radio/network side effects."""
     words = message.strip().split()
     arg = words[1].lstrip("!").lower() if len(words) > 1 else ""
+    arg = _ALIASES.get(arg, arg)
     if arg and not arg.isdigit():
         for cmd, desc in CMDS:
             bare = cmd.split()[0].lstrip("!").lower()
@@ -122,7 +130,7 @@ def _mock_location():
 SIMULATABLE = {
     "fifa2026", "konversi", "kursrupiah", "morse", "p3k", "libur", "gunung",
     "cari", "wiki", "ringkasan", "cuaca", "hargabbm", "dimana", "pesan",
-    "lelucon", "joke", "humor",
+    "lelucon", "joke", "humor", "darurat", "pesawat", "banjir", "bencana",
 }
 
 
@@ -161,6 +169,21 @@ def simulate_command(text: str):
         if word == "p3k":
             from modules.p3k import get_p3k
             return True, get_p3k(text)
+        if word == "darurat":
+            from modules.darurat import get_darurat
+            lat, lon = _mock_location()
+            return True, get_darurat(text, lat, lon, gps_available=True)
+        if word == "pesawat":
+            from modules.pesawat import get_pesawat
+            lat, lon = _mock_location()
+            return True, get_pesawat(text, lat, lon, gps_available=True)
+        if word == "banjir":
+            from modules.banjir import get_banjir
+            lat, lon = _mock_location()
+            return True, get_banjir(text, lat, lon, gps_available=True)
+        if word == "bencana":
+            from modules.bencana import get_bencana
+            return True, get_bencana(text)
         if word == "libur":
             from modules.libur import get_libur
             return True, get_libur(text)

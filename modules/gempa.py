@@ -32,11 +32,23 @@ def _fetch(url):
         data, ts = _CACHE[url]
         if now - ts < _CACHE_TTL:
             return data
-    req  = urllib.request.Request(url, headers={"User-Agent": "curl/7.88.1"})
-    r    = urllib.request.urlopen(req, timeout=10)
-    data = json.loads(r.read())
-    _CACHE[url] = (data, now)
-    return data
+    from modules.cache_status import record_status
+    try:
+        req  = urllib.request.Request(url, headers={"User-Agent": "curl/7.88.1"})
+        r    = urllib.request.urlopen(req, timeout=10)
+        data = json.loads(r.read())
+        _CACHE[url] = (data, now)
+        record_status("gempa", ok=True)
+        return data
+    except Exception as e:
+        record_status("gempa", ok=False, error=e)
+        raise
+
+
+def refresh():
+    """Force a fresh fetch, bypassing TTL — for external manual-refresh triggers."""
+    _CACHE.pop(_URL_LATEST, None)
+    return _fetch(_URL_LATEST)
 
 
 def _parse_bmkg_time(tgl, jam):
@@ -68,7 +80,10 @@ def _haversine(lat1, lon1, lat2, lon2):
 
 def _bearing_label(lat1, lon1, lat2, lon2):
     angle = math.degrees(math.atan2(lon2 - lon1, lat2 - lat1)) % 360
-    dirs  = ["U", "TL", "T", "TG", "S", "BD", "B", "BL"]
+    dirs = [
+        "⬆️ Utara", "↗️ Timur Laut", "➡️ Timur", "↘️ Tenggara",
+        "⬇️ Selatan", "↙️ Barat Daya", "⬅️ Barat", "↖️ Barat Laut",
+    ]
     return dirs[round(angle / 45) % 8]
 
 

@@ -33,7 +33,7 @@ def text_from_html(body):
 def get_kiwix_summary(search_term, truncate=True):
     """Query local Kiwix server for Wikipedia article using only search results."""
     if search_term is None or search_term.strip() == "":
-        return ERROR_FETCHING_DATA
+        return "Ketik kata yang mau dicari. Contoh: !cari gunung krakatau"
     try:
         search_encoded = quote(search_term)
         search_url = f"{kiwix_url}/search?content={kiwix_library_name}&pattern={search_encoded}"
@@ -67,18 +67,18 @@ def get_kiwix_summary(search_term, truncate=True):
         if wikipedia_enabled:
             logger.debug("Kiwix: Falling back to Wikipedia API.")
             return get_wikipedia_summary(search_term, force=True)
-        return ERROR_FETCHING_DATA
+        return f'🔍 Gak ketemu artikel soal "{search_term}".'
 
     except Exception as e:
         logger.warning(f"System: Error with Kiwix for:{search_term} URL:{search_url} {e}")
-        return ERROR_FETCHING_DATA
+        return "❌ Gagal mengambil data dari Kiwix. Coba lagi nanti."
 
 def get_wikipedia_summary(search_term, location=None, force=False, truncate=True):
     if use_kiwix_server and not force:
         return get_kiwix_summary(search_term)
 
     if not search_term or not search_term.strip():
-        return ERROR_FETCHING_DATA
+        return "Ketik kata yang mau dicari. Contoh: !cari gunung krakatau"
 
     api_url = f"https://id.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(search_term)}"
     headers = {
@@ -88,13 +88,13 @@ def get_wikipedia_summary(search_term, location=None, force=False, truncate=True
         response = requests.get(api_url, timeout=5, headers=headers)
         if response.status_code == 404:
             logger.warning(f"System: No Wikipedia Results for:{search_term}")
-            return ERROR_FETCHING_DATA
+            return f'🔍 Gak ketemu artikel soal "{search_term}" di Wikipedia.'
         response.raise_for_status()
         data = response.json()
         logger.debug(f"Wikipedia API response for '{search_term}': {len(data)} keys")
         if "extract" not in data or not data.get("extract"):
             #logger.debug(f"System: Wikipedia API returned no extract for:{search_term} (data: {data})")
-            return ERROR_FETCHING_DATA
+            return f'🔍 Gak ketemu artikel soal "{search_term}" di Wikipedia.'
         if data.get("type") == "disambiguation" or "dapat merujuk ke" in data.get("extract", "") or "may refer to:" in data.get("extract", ""):
             #logger.warning(f"System: Disambiguation page for:{search_term} (data: {data})")
             # Fetch and parse the HTML disambiguation page
@@ -118,10 +118,10 @@ def get_wikipedia_summary(search_term, location=None, force=False, truncate=True
         summary = data.get("extract")
         if not summary or not isinstance(summary, str) or not summary.strip():
             #logger.debug(f"System: No summary found for:{search_term} (data: {data})")
-            return ERROR_FETCHING_DATA
+            return f'🔍 Gak ketemu artikel soal "{search_term}" di Wikipedia.'
         sentences = [s for s in summary.split('. ') if s.strip()]
         if not sentences:
-            return ERROR_FETCHING_DATA
+            return f'🔍 Gak ketemu artikel soal "{search_term}" di Wikipedia.'
         summary = '. '.join(sentences[:wiki_return_limit])
         if summary and not summary.endswith('.'):
             summary += '.'
@@ -132,4 +132,4 @@ def get_wikipedia_summary(search_term, location=None, force=False, truncate=True
             return summary.strip()
     except Exception as e:
         logger.warning(f"System: Wikipedia API error for:{search_term} {e}")
-        return ERROR_FETCHING_DATA
+        return "❌ Gagal mengambil data dari Wikipedia. Coba lagi nanti."

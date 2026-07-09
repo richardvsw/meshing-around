@@ -114,12 +114,30 @@ def _fetch_date(date_str):
         if (now - fetch_time) < ttl:
             return data
 
-    url = f"{_BASE_URL}?dates={date_str}"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    r = urllib.request.urlopen(req, timeout=10)
-    data = json.loads(r.read())
-    _CACHE[date_str] = (data, now)
-    return data
+    from modules.cache_status import record_status
+    try:
+        url = f"{_BASE_URL}?dates={date_str}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        r = urllib.request.urlopen(req, timeout=10)
+        data = json.loads(r.read())
+        _CACHE[date_str] = (data, now)
+        record_status("fifa2026", ok=True)
+        return data
+    except Exception as e:
+        record_status("fifa2026", ok=False, error=e)
+        raise
+
+
+def refresh():
+    """Force a fresh fetch for today+yesterday (same dates get_fifa2026 uses),
+    bypassing TTL — for external manual-refresh triggers."""
+    now = datetime.now(WIB)
+    today_str = now.strftime("%Y%m%d")
+    yesterday_str = (now - timedelta(days=1)).strftime("%Y%m%d")
+    _CACHE.pop(today_str, None)
+    _CACHE.pop(yesterday_str, None)
+    _fetch_date(yesterday_str)
+    return _fetch_date(today_str)
 
 
 def _fmt_wib(dt):

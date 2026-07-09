@@ -145,6 +145,10 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "gempa":     lambda: get_gempa(message, message_from_id, deviceID, my_settings),
     "alarm":     lambda: get_alarm(message, message_from_id),
     "p3k":       lambda: get_p3k(message),
+    "darurat":   lambda: get_darurat_with_location(message_from_id, deviceID, message),
+    "pesawat":   lambda: get_pesawat_with_location(message_from_id, deviceID, message),
+    "banjir":    lambda: get_banjir_with_location(message_from_id, deviceID, message),
+    "bencana":   lambda: get_bencana(message, message_from_id, deviceID),
     "konversi":  lambda: get_konversi(message),
     "morse":     lambda: get_morse(message),
     "gunung":    lambda: get_gunung(message, message_from_id, deviceID),
@@ -640,7 +644,7 @@ def handle_howfar(message, message_from_id, deviceID, isDM):
     # if no GPS location return
     if lat == my_settings.latitudeValue and lon == my_settings.longitudeValue:
         logger.debug(f"System: HowFar: No GPS location for {message_from_id}")
-        return "No GPS location available"
+        return "📍 Lokasi GPS gak tersedia. Aktifin GPS di node kamu dulu ya."
     
     if "reset" in message.lower():
         msg = distance(lat,lon,message_from_id, reset=True)
@@ -1712,7 +1716,7 @@ def handle_whereami(message_from_id, deviceID, channel_number):
     if check_throttle:
         return check_throttle
     lat, lon = location[0], location[1]
-    if int(float(lat)) == 0 and int(float(lon)) == 0:
+    if (int(float(lat)) == 0 and int(float(lon)) == 0) or (lat == my_settings.latitudeValue and lon == my_settings.longitudeValue):
         return "📍 Lokasi tidak ditemukan. Pastikan GPS kamu aktif dan sudah mengirim posisi."
     try:
         from geopy.geocoders import Nominatim

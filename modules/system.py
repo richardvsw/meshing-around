@@ -170,12 +170,34 @@ if rssEnable or enable_headlines:
 from modules.bbm import get_bbm_prices
 from modules.kurs import get_kurs_rupiah
 from modules.fifa import get_fifa2026
-trap_list = trap_list + ("hargabbm", "bbmharga", "kursrupiah", "kurs", "fifa2026", "fifa", "gempa", "alarm", "p3k", "konversi", "morse")
+trap_list = trap_list + ("hargabbm", "bbmharga", "kursrupiah", "kurs", "fifa2026", "fifa", "gempa", "alarm", "p3k", "konversi", "morse", "darurat", "pesawat", "banjir", "bencana")
 
 # New commands: gempa, alarm, p3k, konversi, morse
 from modules.gempa import get_gempa
 from modules.alarm import get_alarm, ack_alarm
 from modules.p3k import get_p3k
+from modules.darurat import get_darurat as _get_darurat_base
+
+def get_darurat_with_location(nodeID, deviceID, message=None):
+    location = get_node_location(nodeID, deviceID)
+    gps_available = not (location[0] == latitudeValue and location[1] == longitudeValue)
+    return _get_darurat_base(message, location[0], location[1], gps_available=gps_available)
+
+from modules.pesawat import get_pesawat as _get_pesawat_base
+
+def get_pesawat_with_location(nodeID, deviceID, message=None):
+    location = get_node_location(nodeID, deviceID)
+    gps_available = not (location[0] == latitudeValue and location[1] == longitudeValue)
+    return _get_pesawat_base(message, location[0], location[1], gps_available=gps_available)
+
+from modules.banjir import get_banjir as _get_banjir_base
+
+def get_banjir_with_location(nodeID, deviceID, message=None):
+    location = get_node_location(nodeID, deviceID)
+    gps_available = not (location[0] == latitudeValue and location[1] == longitudeValue)
+    return _get_banjir_base(message, location[0], location[1], gps_available=gps_available)
+
+from modules.bencana import get_bencana
 from modules.konversi import get_konversi
 from modules.morse import get_morse
 from modules.gunung import get_gunung
