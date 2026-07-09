@@ -16,6 +16,31 @@ import modules.settings as my_settings
 from modules.system import *
 _seen_packet_ids = {}  # packet_id -> timestamp, for dedup
 
+# rivbot-ui's mqtt_tap.py can only decrypt channel-PSK traffic, not PKI —
+# meaning DM commands (the majority of real usage) never reach its stats
+# logging. This writes directly into the same SQLite `stats` table from
+# here instead, where the command is already decrypted. Bot and UI are
+# separate processes/services with no shared memory, hence the direct
+# cross-process DB write rather than an in-memory call.
+_RIVBOT_UI_DB = "/opt/rivbot-ui/data/conversations.db"
+
+
+def _log_cmd_stat(cmd, message_from_id):
+    try:
+        import sqlite3
+        import time as _time
+        from_id = f"!{message_from_id:08x}"
+        from_name = get_name_from_number(message_from_id)
+        conn = sqlite3.connect(_RIVBOT_UI_DB, timeout=2)
+        conn.execute(
+            "INSERT INTO stats(cmd,from_id,from_name,ts) VALUES(?,?,?,?)",
+            (cmd, from_id, from_name, int(_time.time())),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.debug(f"System: cmd stats write failed: {e}")
+
 # list of commands to remove from the default list for DM only
 restrictedCommands = ["blackjack", "videopoker", "dopewars", "lemonstand", "golfsim", "mastermind", "hangman", "hamtest", "tictactoe", "tic-tac-toe", "quiz", "q:", "survey", "s:", "battleship"]
 restrictedResponse = "🤖only available in a Direct Message📵" # "" for none
@@ -240,6 +265,7 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
                 bot_response = restrictedResponse
         else:
             logger.debug(f"System: Bot detected Commands:{cmds} From: {get_name_from_number(message_from_id)} isDM:{isDM} playing:{playing}")
+            _log_cmd_stat(cmds[0]['cmd'], message_from_id)
             # run the first command after sorting
             bot_response = command_handler[cmds[0]['cmd']]()
             # append the command to the cmdHistory list for lheard and history
