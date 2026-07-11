@@ -154,6 +154,19 @@ ACCENT_DK = (42, 143, 116)
 W, H = 1220, 1800  # upper bound only — final image is always cropped to actual content height
 SIDEBAR_W = 340  # right column: personal zoom-inset panel
 
+# ── map palette — "night mode Maps" (like Google/Apple Maps' dark theme):
+# dark navy sea, a slightly lighter dark land tone, muted border lines,
+# light labels with a dark halo — tinted to the dashboard's own teal so it
+# sits naturally in the dark dashboard instead of a bright light-mode panel. ─
+MAP_WATER  = (12, 20, 27)     # deep navy sea
+MAP_LAND   = (26, 38, 43)     # muted dark teal-green land, distinct from sea
+MAP_BORDER = (52, 70, 68)     # province boundary lines
+MAP_LABEL  = (205, 216, 212)  # light label text
+MAP_HALO   = (8, 13, 17)      # dark halo for legibility over polygons/water
+PIN_FILL   = ACCENT
+PIN_OTHER  = (227, 179, 65)   # nearby-node pins (distinct from the requester's own ACCENT pin)
+PIN_HEAD_R = 9  # teardrop head radius, px
+
 
 def font(size, bold=False):
     name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
@@ -183,6 +196,47 @@ def _load_provinces():
     except Exception as e:
         print(f"provinces geojson load failed: {e}")
         return []
+
+
+def _halo_text(d, xy, text, f, fill=MAP_LABEL, halo=MAP_HALO, anchor=None):
+    """Text with a soft outline so labels stay legible sitting on top of
+    polygons/water rather than a solid label chip — how Maps-style labels
+    are usually drawn."""
+    x, y = xy
+    for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (-1, 1), (1, -1)):
+        d.text((x + dx, y + dy), text, font=f, fill=halo, anchor=anchor)
+    d.text((x, y), text, font=f, fill=fill, anchor=anchor)
+
+
+def _draw_pin(d, px, py, r=PIN_HEAD_R, fill=PIN_FILL):
+    """Classic Maps-style teardrop marker: a circle head tapering to a
+    point at the actual coordinate, instead of a plain dot."""
+    d.polygon([(px, py), (px - r * 0.78, py - r * 1.55), (px + r * 0.78, py - r * 1.55)],
+              fill=fill)
+    d.ellipse((px - r, py - r * 2.5, px + r, py - r * 0.5), fill=fill, outline=(255, 255, 255), width=1)
+    d.ellipse((px - r * 0.42, py - r * 1.9, px + r * 0.42, py - r * 1.1), fill=(255, 255, 255))
+
+
+def _province_centroid(feat, project):
+    """Rough polygon centroid (vertex average of the exterior ring, not
+    area-weighted) — good enough to place a label roughly inside a
+    province at this map scale, no need for a real centroid algorithm."""
+    geom = feat.get("geometry", {})
+    polys = geom.get("coordinates", [])
+    if geom.get("type") == "Polygon":
+        polys = [polys]
+    # Label on the largest ring (by vertex count) if a province is a
+    # multi-polygon (e.g. archipelagos) — avoids labeling a tiny outlying
+    # island instead of the main landmass.
+    ring = max((poly[0] for poly in polys if poly), key=len, default=None)
+    if not ring:
+        return None
+    xs, ys = [], []
+    for lon, lat in ring:
+        x, y = project(lat, lon)
+        xs.append(x)
+        ys.append(y)
+    return sum(xs) / len(xs), sum(ys) / len(ys)
 
 
 def _load_city_coords_cache():
@@ -292,6 +346,16 @@ def _make_projector(lon_min, lon_max, lat_min, lat_max, px_x0, px_y0, px_x1, px_
     return project
 
 
+def _haversine_km(lat1, lon1, lat2, lon2):
+    import math
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
 def _find_requester_position(requester_short, positions):
     """Looks up the requesting node (by short name/callsign) inside an
     already-computed positions list, so the national map and the zoom inset
@@ -305,7 +369,12 @@ def _find_requester_position(requester_short, positions):
     return None
 
 
-def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry, hw_map):
+NEARBY_RADIUS_KM = 25  # how far counts as "nearby" for the zoom inset's neighbor list
+NEARBY_LABEL_MAX = 6   # only label this many pins on the map itself, to avoid clutter
+NEARBY_LIST_MAX = 5    # only list this many in the sidebar text
+
+
+def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry, hw_map, positions):
     """Right-sidebar panel: a tight zoom around whoever sent !stat, reusing
     the same projector/pin-drawing approach as the national map but with a
     city-scale bounding box instead of all of Indonesia. Falls back to a
@@ -313,22 +382,38 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
     rounded(d, (x, y, x + w, y + h), 12, fill=SURF, outline=BORDER, width=1)
     d.text((x + 20, y + 16), "Lokasi Kamu", font=font(17, bold=True), fill=TEXT)
 
-    # Bottom info block (city, coords, node details) needs more room than
-    # the old 2-line tag, so the map itself is shorter to make space.
-    info_h = 118
-    map_x0, map_y0 = x + 16, y + 50
-    map_x1, map_y1 = x + w - 16, y + h - 16 - info_h
-    rounded(d, (map_x0, map_y0, map_x1, map_y1), 8, fill=(8, 12, 17))
-
     if not requester_pos:
+        map_x0, map_y0 = x + 16, y + 50
+        map_x1, map_y1 = x + w - 16, y + h - 16
+        rounded(d, (map_x0, map_y0, map_x1, map_y1), 8, fill=MAP_WATER)
         msg = ("Kirim !stat dari node kamu\nuntuk lihat lokasimu di sini."
                if not requester_short else
                "Node kamu belum punya data\nlokasi (GPS atau kota terdaftar).")
         for i, line in enumerate(msg.split("\n")):
-            d.text((map_x0 + 16, map_y0 + 20 + i * 20), line, font=font(13), fill=FAINT)
+            d.text((map_x0 + 16, map_y0 + 20 + i * 20), line, font=font(13), fill=MAP_LABEL)
         return
 
     n, lat, lon, is_approx = requester_pos
+    short = (n.get("short") or "?").strip()
+
+    # ── find nearby nodes (real distance, not just "inside the same pixel
+    # box") so the nearest-node figure and the list are both trustworthy ──
+    nearby = []
+    for other_n, olat, olon, oapprox in positions:
+        if other_n is n:
+            continue
+        dist = _haversine_km(lat, lon, olat, olon)
+        if dist <= NEARBY_RADIUS_KM:
+            nearby.append((other_n, olat, olon, oapprox, dist))
+    nearby.sort(key=lambda t: t[4])
+
+    # Bottom info block needs room for: own node (name/city/coords/hw) +
+    # nearest-node line + a short neighbor list — taller than a plain tag.
+    info_h = 118 + 20 + min(len(nearby), NEARBY_LIST_MAX) * 17
+    map_x0, map_y0 = x + 16, y + 50
+    map_x1, map_y1 = x + w - 16, y + h - 16 - info_h
+    rounded(d, (map_x0, map_y0, map_x1, map_y1), 8, fill=MAP_WATER)
+
     features = _load_provinces()
     # City/reasonable-radius view, not a whole province — the vendored
     # geometry has no city-level detail anyway, so at this scale the
@@ -342,7 +427,7 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
     # the main canvas bled into the header/cards above. Render onto a
     # panel-sized sub-image instead, then paste that in — the sub-image's
     # own edges do the clipping for free.
-    sub = Image.new("RGB", (box_w, box_h), (8, 12, 17))
+    sub = Image.new("RGB", (box_w, box_h), MAP_WATER)
     sd = ImageDraw.Draw(sub)
     project = _make_projector(lon - pad, lon + pad, lat - pad, lat + pad,
                                0, 0, box_w, box_h, pad=0.1)
@@ -359,7 +444,7 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
             ring = poly[0]
             pts = [project(plat, plon) for plon, plat in ring]
             if len(pts) >= 3:
-                sd.polygon(pts, fill=(24, 34, 46), outline=(44, 60, 76))
+                sd.polygon(pts, fill=MAP_LAND, outline=MAP_BORDER, width=2)
 
     px, py = project(lat, lon)
 
@@ -372,20 +457,32 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
     px_per_km = abs(project(lat + 5 / 111.0, lon)[1] - py) / 5.0
     for radius_km, label in ((5, "5 km"), (15, "15 km")):
         r = radius_km * px_per_km
-        sd.ellipse((px - r, py - r, px + r, py + r), outline=(52, 68, 84), width=1)
-        sd.text((px + r * 0.70, py - r * 0.70 - 12), label, font=font(11), fill=FAINT)
+        sd.ellipse((px - r, py - r, px + r, py + r), outline=(90, 108, 104), width=1)
+        _halo_text(sd, (px + r * 0.70, py - r * 0.70 - 12), label, font(11))
 
-    sd.ellipse((px - 10, py - 10, px + 10, py + 10), fill=(28, 74, 63))
-    color = ACCENT if not is_approx else ACCENT_DK
-    sd.ellipse((px - 4, py - 4, px + 4, py + 4), fill=color, outline=(6, 10, 14), width=1)
-    img.paste(sub, (map_x0, map_y0))
+    # ── nearby nodes, drawn in a distinct color from the requester's own pin ──
+    for other_n, olat, olon, oapprox, dist in nearby:
+        opx, opy = project(olat, olon)
+        if not (0 <= opx <= box_w and 0 <= opy <= box_h):
+            continue
+        _draw_pin(sd, opx, opy, r=6, fill=PIN_OTHER)
+    for other_n, olat, olon, oapprox, dist in nearby[:NEARBY_LABEL_MAX]:
+        opx, opy = project(olat, olon)
+        if 0 <= opx <= box_w and 0 <= opy <= box_h:
+            oshort = (other_n.get("short") or "?").strip()
+            _halo_text(sd, (opx + 7, opy - 10), oshort, font(10, bold=True))
 
-    # ── info block: node name, city, coords, hardware ──────────────────────
-    short = (n.get("short") or "?").strip()
-    long_name = (n.get("long") or "").strip()
-    hw = _normalize_hw(n.get("hw", "?"), hw_map)
     entry = registry.get(short.upper())
     city = entry.get("city") if entry else None
+    if city:
+        _halo_text(sd, (px + 9, py - 3), city, font(12, bold=True), fill=MAP_LABEL, anchor="lm")
+
+    _draw_pin(sd, px, py, fill=PIN_FILL)
+    img.paste(sub, (map_x0, map_y0))
+
+    # ── info block: node name, city, coords, hardware, nearest node ────────
+    long_name = (n.get("long") or "").strip()
+    hw = _normalize_hw(n.get("hw", "?"), hw_map)
 
     info_y = map_y1 + 12
     d.text((x + 20, info_y), long_name or short, font=font(15, bold=True), fill=TEXT)
@@ -396,6 +493,25 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
     d.text((x + 20, info_y), f"{lat:.4f}, {lon:.4f}", font=font(12), fill=MUTED)
     info_y += 19
     d.text((x + 20, info_y), hw, font=font(12), fill=FAINT)
+    info_y += 26
+
+    if nearby:
+        nearest_n, _, _, _, nearest_dist = nearby[0]
+        nearest_short = (nearest_n.get("short") or "?").strip()
+        d.text((x + 20, info_y), f"Node terdekat: {nearest_short} ({nearest_dist:.1f} km)",
+               font=font(13, bold=True), fill=ACCENT)
+        info_y += 22
+        for other_n, _, _, _, dist in nearby[:NEARBY_LIST_MAX]:
+            oshort = (other_n.get("short") or "?").strip()
+            d.text((x + 20, info_y), f"• {oshort} — {dist:.1f} km", font=font(12), fill=MUTED)
+            info_y += 17
+        extra = len(nearby) - NEARBY_LIST_MAX
+        if extra > 0:
+            d.text((x + 20, info_y), f"+{extra} node lain dalam {NEARBY_RADIUS_KM} km",
+                   font=font(11), fill=FAINT)
+    else:
+        d.text((x + 20, info_y), f"Tidak ada node lain dalam {NEARBY_RADIUS_KM} km",
+               font=font(12), fill=FAINT)
 
 
 def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
@@ -404,7 +520,7 @@ def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
 
     map_x0, map_y0 = x + 16, y + 50
     map_x1, map_y1 = x + w - 16, y + h - 16
-    rounded(d, (map_x0, map_y0, map_x1, map_y1), 8, fill=(8, 12, 17))
+    rounded(d, (map_x0, map_y0, map_x1, map_y1), 8, fill=MAP_WATER)
 
     features = _load_provinces()
     gps_count = sum(1 for _, _, _, approx in positions if not approx)
@@ -417,7 +533,8 @@ def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
     project = _make_projector(95.0, 141.1, -11.0, 6.1, map_x0, map_y0, map_x1, map_y1)
 
     # ── province polygons (exterior rings only — this dataset has no holes
-    # worth rendering for an infographic at this scale) ────────────────────
+    # worth rendering for an infographic at this scale) + name labels ──────
+    f_province = font(11)
     for feat in features:
         geom = feat.get("geometry", {})
         gtype = geom.get("type")
@@ -430,31 +547,45 @@ def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
             ring = poly[0]  # exterior ring
             pts = [project(lat, lon) for lon, lat in ring]
             if len(pts) >= 3:
-                d.polygon(pts, fill=(24, 34, 46), outline=(44, 60, 76))
+                d.polygon(pts, fill=MAP_LAND, outline=MAP_BORDER, width=2)
+
+        name = feat.get("properties", {}).get("Propinsi")
+        centroid = _province_centroid(feat, project)
+        if name and centroid and map_x0 < centroid[0] < map_x1 and map_y0 < centroid[1] < map_y1:
+            _halo_text(d, centroid, name.title(), f_province, anchor="mm")
+
+    # ── registered-city labels (only cities that actually have a node) ─────
+    seen_cities = set()
+    f_city = font(11, bold=True)
+    for n, lat, lon, is_approx in positions:
+        if not is_approx:
+            continue
+        short = (n.get("short") or "").strip().upper()
+        city = (registry.get(short) or {}).get("city")
+        if not city or city in seen_cities:
+            continue
+        px, py = project(lat, lon)
+        if map_x0 <= px <= map_x1 and map_y0 <= py <= map_y1:
+            seen_cities.add(city)
+            _halo_text(d, (px + 8, py - 3), city, f_city, anchor="lm")
 
     # ── node pins ────────────────────────────────────────────────────────────
-    # img is RGB (not RGBA) — ImageDraw ignores alpha on that mode, so fake
-    # the glow with a dim solid ring instead of relying on transparency.
-    # Approximate (city-centroid) positions render smaller/dimmer than real
-    # GPS fixes, and several nodes sharing one city will visually stack at
-    # the same point — that's honest, not a bug: it IS the same point.
+    # Approximate (city-centroid) positions render as a smaller pin than
+    # real GPS fixes, and several nodes sharing one city will visually stack
+    # at the same point — that's honest, not a bug: it IS the same point.
     for n, lat, lon, is_approx in positions:
         px, py = project(lat, lon)
         if not (map_x0 <= px <= map_x1 and map_y0 <= py <= map_y1):
             continue
-        if is_approx:
-            d.ellipse((px - 5, py - 5, px + 5, py + 5), fill=(28, 74, 63))
-            d.ellipse((px - 2, py - 2, px + 2, py + 2), fill=ACCENT_DK, outline=(6, 10, 14), width=1)
-        else:
-            d.ellipse((px - 8, py - 8, px + 8, py + 8), fill=(28, 74, 63))
-            d.ellipse((px - 3.5, py - 3.5, px + 3.5, py + 3.5), fill=ACCENT, outline=(6, 10, 14), width=1)
+        r = 6 if is_approx else 9
+        _draw_pin(d, px, py, r=r, fill=ACCENT_DK if is_approx else PIN_FILL)
 
     # ── legend + honest caption ──────────────────────────────────────────────
     leg_y = map_y0 + 12
-    d.ellipse((map_x0 + 12, leg_y, map_x0 + 20, leg_y + 8), fill=ACCENT)
-    d.text((map_x0 + 26, leg_y - 3), "GPS asli", font=font(12), fill=MUTED)
+    d.ellipse((map_x0 + 12, leg_y, map_x0 + 20, leg_y + 8), fill=PIN_FILL)
+    _halo_text(d, (map_x0 + 26, leg_y - 3), "GPS asli", font(12))
     d.ellipse((map_x0 + 100, leg_y + 1, map_x0 + 106, leg_y + 7), fill=ACCENT_DK)
-    d.text((map_x0 + 112, leg_y - 3), "perkiraan dari kota terdaftar", font=font(12), fill=MUTED)
+    _halo_text(d, (map_x0 + 112, leg_y - 3), "perkiraan dari kota terdaftar", font(12))
 
     caption = (f"{gps_count} node dgn GPS asli, {approx_count} dgn posisi perkiraan "
                f"(dari kota terdaftar), {len(nodes) - gps_count - approx_count} tanpa data lokasi")
@@ -556,7 +687,7 @@ def main():
     sidebar_y = card_y
     sidebar_h = chart_y + chart_h - card_y
     draw_zoom_inset(d, img, sidebar_x, sidebar_y, SIDEBAR_W, sidebar_h,
-                     requester_short, requester_pos, registry, hw_map)
+                     requester_short, requester_pos, registry, hw_map, positions)
 
     # ── Indonesia map with node pins (full width, below both columns) ──────
     map_y = chart_y + chart_h + 24
