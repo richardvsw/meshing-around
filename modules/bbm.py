@@ -206,7 +206,7 @@ def _nearest_spbu_from_cache(lat, lon, limit=3, radius_km=15):
 
     if not rows:
         return None
-    candidates = [(_haversine_km(lat, lon, r[1], r[2]), r[0]) for r in rows]
+    candidates = [(_haversine_km(lat, lon, r[1], r[2]), r[0], r[1], r[2]) for r in rows]
     candidates = [c for c in candidates if c[0] <= radius_km]
     if not candidates:
         return None
@@ -247,7 +247,7 @@ def _nearest_spbu_from_live(lat, lon, limit=3, radius_km=15):
             if elat is None or elon is None:
                 continue
             dist = _haversine_km(lat, lon, elat, elon)
-            candidates.append((dist, name))
+            candidates.append((dist, name, elat, elon))
         if not candidates:
             return None
         candidates.sort(key=lambda x: x[0])
@@ -265,8 +265,9 @@ def _nearest_spbu_block(lat, lon, limit=3, radius_km=15):
         return None
 
     lines = ["⛽ SPBU Terdekat:"]
-    for dist, name in candidates:
+    for dist, name, elat, elon in candidates:
         lines.append(f"  {name} (~{dist:.1f} km)")
+        lines.append(f"    maps.google.com/?q={elat:.5f},{elon:.5f}")
     return "\n".join(lines)
 
 

@@ -47,6 +47,10 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return 2 * r * math.asin(math.sqrt(a))
 
 
+def _maps_link(lat, lon):
+    return f"maps.google.com/?q={lat:.5f},{lon:.5f}"
+
+
 def _best_by_type_from_rows(rows, lat, lon):
     best = {}
     for amenity, name, elat, elon in rows:
@@ -54,7 +58,7 @@ def _best_by_type_from_rows(rows, lat, lon):
         if dist > _SEARCH_RADIUS_KM:
             continue
         if amenity not in best or dist < best[amenity][0]:
-            best[amenity] = (dist, name)
+            best[amenity] = (dist, name, elat, elon)
     return best
 
 
@@ -134,8 +138,9 @@ def _format_nearest(best):
     lines = ["📍 Fasilitas Terdekat (OpenStreetMap):"]
     for amenity, (emoji, label) in _TYPE_LABELS.items():
         if amenity in best:
-            dist, name = best[amenity]
+            dist, name, elat, elon = best[amenity]
             lines.append(f"{emoji} {label}: {name} (~{dist:.1f} km)")
+            lines.append(f"   {_maps_link(elat, elon)}")
     lines.append(
         "⚠️ Data crowdsource OSM, jarak garis lurus (bukan rute jalan) — "
         "bisa saja tidak akurat/tidak update. Tetap konfirmasi via 112 saat darurat."
