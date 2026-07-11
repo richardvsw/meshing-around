@@ -224,7 +224,7 @@ def _nearest(volcanoes, message_from_id, deviceID):
     lines = ["🌋 Gunung Terdekat", ""]
     for dist, v in ranked[:5]:
         icon = _LEVEL_ICON.get(v["level"], "⬜")
-        lines.append(f"{icon} {v['name']} ({dist:.0f} km) - {_LEVEL_SHORT.get(v['level'], '?')}")
+        lines.append(f"{icon} {v['name']} ({v['region']}, {dist:.0f} km) - {_LEVEL_SHORT.get(v['level'], '?')}")
     return "\n".join(lines)
 
 
@@ -233,7 +233,7 @@ def _summary(volcanoes):
     lines = ["🔥 Status Gunung (Top 5)", ""]
     for i, v in enumerate(top, 1):
         icon = _LEVEL_ICON.get(v["level"], "⬜")
-        lines.append(f"{icon}{i}. {v['name']} - {_LEVEL_SHORT.get(v['level'], '?')}")
+        lines.append(f"{icon}{i}. {v['name']} ({v['region']}) - {_LEVEL_SHORT.get(v['level'], '?')}")
     lines.append("")
     lines.append("!gunung <nama> untuk detail")
     return "\n".join(lines)
@@ -246,7 +246,7 @@ def _filtered(volcanoes, pred, title):
     lines = [f"🔥 {title}", ""]
     for v in matches[:10]:
         icon = _LEVEL_ICON.get(v["level"], "⬜")
-        lines.append(f"{icon} {v['name']} - {_LEVEL_SHORT.get(v['level'], '?')}")
+        lines.append(f"{icon} {v['name']} ({v['region']}) - {_LEVEL_SHORT.get(v['level'], '?')}")
     if len(matches) > 10:
         lines.append(f"...dan {len(matches) - 10} lainnya")
     return "\n".join(lines)
@@ -265,11 +265,16 @@ def _detail(volcanoes, query):
             d = _fetch_detail(v["link"])
         except Exception as e:
             logger.debug("gunung detail error for %s: %s", v["name"], e)
-            blocks.append(f"{v['name']}\nStatus: {_LEVEL_SHORT.get(v['level'], '?')}\n(detail gagal dimuat)")
+            blocks.append(f"{v['name']} ({v['region']})\nStatus: {_LEVEL_SHORT.get(v['level'], '?')}\n(detail gagal dimuat)")
             continue
         icon = _LEVEL_ICON.get(v["level"], "⬜")
-        lines = [
-            v["name"],
+        lines = [v["name"]]
+        if v["region"]:
+            lines.append(f"📍 {v['region']}")
+        coord = _COORDS.get(v["name"].lower())
+        if coord:
+            lines.append(f"🗺️ {coord[0]:.3f}, {coord[1]:.3f}")
+        lines += [
             f"Status: {icon} {_LEVEL_SHORT.get(v['level'], d['status'])}",
             f"Update: {d['period']}",
         ]
