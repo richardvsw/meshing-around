@@ -182,6 +182,7 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "gempa":     lambda: get_gempa(message, message_from_id, deviceID, my_settings),
     "alarm":     lambda: get_alarm(message, message_from_id),
     "p3k":       lambda: get_p3k(message),
+    "survival":  lambda: get_survival(message),
     "darurat":   lambda: get_darurat_with_location(message_from_id, deviceID, message),
     "pesawat":   lambda: get_pesawat_with_location(message_from_id, deviceID, message),
     "banjir":    lambda: get_banjir_with_location(message_from_id, deviceID, message),

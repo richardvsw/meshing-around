@@ -34,6 +34,7 @@ CMDS = [
     ("!wiki <kata>",   "Cari info di Wikipedia bahasa Indonesia 🔍 (alias: !cari)"),
     # Darurat
     ("!p3k",         "Panduan pertolongan pertama"),
+    ("!survival",    "Bertahan hidup di alam: air, api, tempat berlindung, sinyal, navigasi 🏕️"),
     ("!darurat",     "Nomor kontak darurat nasional (112, SAR, polisi, dll) 🚨"),
     ("!pesawat [nomor]", "Pesawat terdekat, atau cari by nomor penerbangan ✈️"),
     # Lainnya
@@ -53,7 +54,7 @@ CATEGORIES = [
     ("🌌", ["matahari", "bulan", "surya"]),
     ("👥", ["siapa", "dimana", "daftar", "peringkat", "pesan"]),
     ("🤖", ["tanya", "wiki"]),
-    ("🏥", ["p3k", "darurat"]),
+    ("🏥", ["p3k", "survival", "darurat"]),
     ("✈️", ["pesawat"]),
     ("🎉", ["lelucon", "fifa2026"]),
 ]
@@ -128,7 +129,7 @@ def _mock_location():
 # chain), !matahari/!surya (need the `ephem` package — installed in the
 # bot's own venv but out of scope to add here for a solar-position calc).
 SIMULATABLE = {
-    "fifa2026", "konversi", "kursrupiah", "morse", "p3k", "libur", "gunung",
+    "fifa2026", "konversi", "kursrupiah", "morse", "p3k", "survival", "libur", "gunung",
     "cari", "wiki", "ringkasan", "cuaca", "hargabbm", "dimana", "pesan",
     "lelucon", "joke", "humor", "darurat", "pesawat", "banjir", "bencana",
 }
@@ -169,6 +170,9 @@ def simulate_command(text: str):
         if word == "p3k":
             from modules.p3k import get_p3k
             return True, get_p3k(text)
+        if word == "survival":
+            from modules.survival import get_survival
+            return True, get_survival(text)
         if word == "darurat":
             from modules.darurat import get_darurat
             lat, lon = _mock_location()
