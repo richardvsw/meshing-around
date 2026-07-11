@@ -9,6 +9,7 @@ handle_wxc() and modules/bbm.py's get_bbm_prices() only return final
 display text, no structured data to pull a single number from safely."""
 import json
 import logging
+import re
 import time
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,13 @@ def get_ringkasan(message=None, message_from_id=None, deviceID=None):
         from modules.gempa import _fetch as _fetch_gempa, _URL_LATEST
         g = _fetch_gempa(_URL_LATEST).get("Infogempa", {}).get("gempa", {})
         if g:
+            # BMKG's Wilayah field is a full sentence, e.g. "Pusat gempa
+            # berada di laut 82 km tenggara Kota Sukabumi" — truncating that
+            # at 35 chars for a one-line summary used to cut it right after
+            # "laut" ("...at sea..."), which reads alarming out of context.
+            # Strip the boilerplate preamble and just keep the location.
             wilayah = g.get("Wilayah", "?")
+            wilayah = re.sub(r'^Pusat gempa berada di (laut|darat)\s*', '', wilayah)
             if len(wilayah) > 35:
                 wilayah = wilayah[:35].rsplit(" ", 1)[0] + "..."
             lines.append(f"🌎 Gempa M{g.get('Magnitude','?')} {wilayah}")
