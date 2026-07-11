@@ -187,10 +187,10 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "stat":      lambda: get_statistik(list(globals().get(f'interface{deviceID}').nodes.values())
                                         if globals().get(f'interface{deviceID}') else [],
                                         caller_num=message_from_id),
-    "diamtest":  lambda: (magicword_pref.opt_out(message_from_id) or
-                          "🔇 Oke, gue diemin balesan otomatis buat kata \"Test\" di channel. Mau nyalain lagi? Ketik !aktiftest."),
-    "aktiftest": lambda: (magicword_pref.opt_in(message_from_id) or
-                          "🔊 Oke, balesan otomatis buat kata \"Test\" di channel gue nyalain lagi."),
+    "senyap":    lambda: (magicword_pref.opt_out(message_from_id) or
+                          "🔇 Oke, gue diemin semua balesan otomatis (kata ajaib, idle nudge, dad joke) buat node kamu. Perintah !command tetap gue jawab kok. Mau nyalain lagi? Ketik !aktif."),
+    "aktif":     lambda: (magicword_pref.opt_in(message_from_id) or
+                          "🔊 Oke, balesan otomatis bot gue nyalain lagi buat node kamu."),
     "darurat":   lambda: get_darurat_with_location(message_from_id, deviceID, message),
     "pesawat":   lambda: get_pesawat_with_location(message_from_id, deviceID, message),
     "banjir":    lambda: get_banjir_with_location(message_from_id, deviceID, message),
@@ -2460,11 +2460,14 @@ def onReceive(packet, interface):
                                     if node['nodeID'] == message_from_id:
                                         node['welcome'] = True
                             else:
-                                if my_settings.dad_jokes_enabled:
+                                if my_settings.dad_jokes_enabled and not magicword_pref.is_opted_out(message_from_id):
                                     # respond with a dad joke on DM
                                     send_message(tell_joke(), channel_number, message_from_id, rxNode)
                                 else:
-                                    # respond with help message on DM
+                                    # respond with help message on DM — always
+                                    # sent even if !senyap is active, since
+                                    # this is a direct answer to what they
+                                    # typed, not an unsolicited nudge
                                     send_message(help_message, channel_number, message_from_id, rxNode)
                     
                     # add message to tts queue
@@ -2478,16 +2481,18 @@ def onReceive(packet, interface):
                         msgLogger.info(f"Device:{rxNode} Channel:{channel_number} | {get_name_from_number(message_from_id, 'long', rxNode)} | DM | " + message_log_string)
             else:
                 # message is on a channel
-                # Exact whole-message "Test"/"test" (the common ham-radio "just
-                # checking my radio works" convention) — bypasses the normal !
-                # requirement below, but ONLY for this literal match, not any
-                # bang-less message. "test 123" or "let's test this" do NOT
-                # match; only the message being precisely "Test" or "test".
-                # Per-node opt-out via !diamtest/!aktiftest — an opted-out node
-                # is treated exactly as if this weren't a magic word at all.
-                is_bare_test_ping = (message_string.strip() in ("Test", "test")
-                                     and not magicword_pref.is_opted_out(message_from_id))
-                if messageTrap(message_string) or is_bare_test_ping:
+                # Exact whole-message magic words ("Test"/"test", "Ping"/"ping",
+                # "CQ"/"cq", etc — see modules/magicword_pref.MAGIC_WORDS, the
+                # common ham-radio "just checking my radio works" convention)
+                # bypass the normal ! requirement below, but ONLY for these
+                # literal matches, not any bang-less message. "test 123" or
+                # "let's test this" do NOT match; only the message being
+                # precisely one of those words, nothing before or after.
+                # Per-node opt-out via !senyap/!aktif — an opted-out node is
+                # treated exactly as if this weren't a magic word at all.
+                is_bare_magic_word = (message_string.strip() in magicword_pref.MAGIC_WORDS
+                                      and not magicword_pref.is_opted_out(message_from_id))
+                if messageTrap(message_string) or is_bare_magic_word:
                     # message is for us to respond to, or is it...
                     if my_settings.ignoreDefaultChannel and channel_number == my_settings.publicChannel:
                         logger.debug(f"System: Ignoring CMD:{message_log_string} From: {get_name_from_number(message_from_id, 'short', rxNode)} Default Channel:{channel_number}")
@@ -2495,14 +2500,14 @@ def onReceive(packet, interface):
                         logger.debug(f"System: Ignoring CMD:{message_log_string} From: {get_name_from_number(message_from_id, 'short', rxNode)} Cantankerous Node")
                     elif str(channel_number) in my_settings.ignoreChannels:
                         logger.debug(f"System: Ignoring CMD:{message_log_string} From: {get_name_from_number(message_from_id, 'short', rxNode)} Ignored Channel:{channel_number}")
-                    elif my_settings.cmdBang and not message_string.startswith("!") and not is_bare_test_ping:
+                    elif my_settings.cmdBang and not message_string.startswith("!") and not is_bare_magic_word:
                         logger.debug(f"System: Ignoring CMD:{message_log_string} From: {get_name_from_number(message_from_id, 'short', rxNode)} Didnt sound like they meant it")
                     else:
                         # message is for bot to respond to, seriously this time..
                         logger.info(f"Device:{rxNode} Channel:{channel_number} " + CustomFormatter.green + "ReceivedChannel: " + CustomFormatter.white + f"{message_log_string} " + CustomFormatter.purple +\
                                     "From: " + CustomFormatter.white + f"{get_name_from_number(message_from_id, 'long', rxNode)}")
                         channel_reply = auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM)
-                        if is_bare_test_ping and not magicword_pref.was_notified(message_from_id):
+                        if is_bare_magic_word and not magicword_pref.was_notified(message_from_id):
                             channel_reply += random.choice(magicword_pref.NOTICE_TEMPLATES)
                             magicword_pref.mark_notified(message_from_id)
                         if my_settings.useDMForResponse:
@@ -2649,12 +2654,13 @@ async def idleFollowupLoop():
             last_ts, deviceID, channel_number, sent = entry
             if not sent and (now - last_ts) >= IDLE_FOLLOWUP_SECONDS:
                 entry[3] = True  # mark sent
-                myNodeNum = globals().get(f'myNodeNum{deviceID}', 777)
-                bot_name = get_name_from_number(myNodeNum, 'long', deviceID)
-                user_name = get_name_from_number(nodeID, 'long', deviceID)
-                msg = random.choice(IDLE_FOLLOWUP_TEMPLATES).format(name=user_name)
-                send_message(msg, 0, nodeID, deviceID)
-                logger.info(f"System: Idle follow-up sent to {user_name} ({nodeID})")
+                if not magicword_pref.is_opted_out(nodeID):
+                    myNodeNum = globals().get(f'myNodeNum{deviceID}', 777)
+                    bot_name = get_name_from_number(myNodeNum, 'long', deviceID)
+                    user_name = get_name_from_number(nodeID, 'long', deviceID)
+                    msg = random.choice(IDLE_FOLLOWUP_TEMPLATES).format(name=user_name)
+                    send_message(msg, 0, nodeID, deviceID)
+                    logger.info(f"System: Idle follow-up sent to {user_name} ({nodeID})")
                 to_remove.append(nodeID)
         for nodeID in to_remove:
             _idle_followup_tracker.pop(nodeID, None)

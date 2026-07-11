@@ -19,8 +19,6 @@ CMDS = [
     ("!alarm HH:MM", "Set alarm, bot DM sampai kamu balas"),
     ("!morse",       "Encode/decode kode morse"),
     ("!ketinggian",    "Estimasi ketinggian dari panjang bayangan ⛰️"),
-    ("!diamtest",    "Matikan balasan otomatis bot kalau kamu ketik \"Test\" di channel"),
-    ("!aktiftest",   "Nyalakan lagi balasan otomatis \"Test\" (kebalikan !diamtest)"),
     # Astronomi
     ("!matahari",      "Terbit & terbenam + sisa siang hari ini 🌅"),
     ("!bulan",         "Fase bulan malam ini + countdown purnama 🌙"),
@@ -53,7 +51,7 @@ CATEGORIES = [
     ("📊", ["ringkasan", "ping"]),
     ("🌤",  ["cuaca", "bencana", "berita", "libur"]),
     ("💰", ["hargabbm", "kursrupiah"]),
-    ("🧭", ["konversi", "jarak", "alarm", "morse", "ketinggian", "diamtest", "aktiftest"]),
+    ("🧭", ["konversi", "jarak", "alarm", "morse", "ketinggian"]),
     ("🌌", ["matahari", "bulan", "surya"]),
     ("👥", ["siapa", "dimana", "daftar", "peringkat", "stat", "pesan"]),
     ("🤖", ["tanya", "wiki"]),
@@ -128,11 +126,13 @@ def _mock_location():
 # node population — same single-client-TCP problem), !jarak (needs a
 # *previous* stored location to diff against —
 # meaningless as a single stateless simulator call), !alarm (schedules a
-# real future DM — a side effect, not a dry-run), !diamtest/!aktiftest
-# (mutate persisted per-node opt-out state — a side effect, not a dry-run),
-# !tanya (LLM call routed through the live bot's DM plumbing), !berita
-# (rss.py's api_throttle import chain), !matahari/!surya (need the `ephem`
-# package — installed in the bot's own venv but out of scope to add here
+# real future DM — a side effect, not a dry-run), !senyap/!aktif (mutate
+# persisted per-node opt-out state — a side effect, not a dry-run; also
+# deliberately not listed in CMDS/CATEGORIES, so !cmd doesn't advertise
+# them), !tanya (LLM call routed through the live bot's DM plumbing),
+# !berita (rss.py's api_throttle import chain), !matahari/!surya (need
+# the `ephem` package — installed in the bot's own venv but out of scope
+# to add here
 # for a solar-position calc).
 SIMULATABLE = {
     "fifa2026", "konversi", "kursrupiah", "morse", "p3k", "survival", "libur", "gunung",

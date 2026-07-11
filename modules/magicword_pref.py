@@ -1,9 +1,17 @@
 """
-Per-node preference for the bare "Test"/"test" magic-word auto-reply
-(see mesh_bot.py's is_bare_test_ping check). !diamtest opts a node out,
-!aktiftest opts back in. Also tracks which nodes have already been shown
-the one-time "you can turn this off" notice, so it's not repeated on
-every single ping.
+Per-node preference for the bare (no "!") magic-word auto-reply — exact
+whole-message match on "Test" or "test" only (the common ham-radio "just
+checking my radio works" convention), nothing before or after. See
+mesh_bot.py's is_bare_magic_word check.
+
+!senyap opts a node out of ALL of the bot's unsolicited/proactive replies
+(this magic-word auto-reply, idle follow-ups, dad jokes) — explicit
+!commands the node sends always still get a reply regardless, so !aktif
+(opt back in) can never get stuck being silenced along with everything
+else.
+
+Also tracks which nodes have already been shown the one-time "you can
+turn this off" notice, so it's not repeated on every single ping.
 
 Small JSON file, same pattern as the other data/*.json caches in this
 project — no DB needed for a couple hundred node IDs at most.
@@ -16,10 +24,14 @@ logger = logging.getLogger(__name__)
 
 _PREF_FILE = "/opt/meshing-around/data/magicword_pref.json"
 
+# Exact match only: "Test" and "test", nothing else — "TEST", "test123",
+# "let's test this" do NOT match.
+MAGIC_WORDS = frozenset(("Test", "test"))
+
 NOTICE_TEMPLATES = [
-    "\n(Btw, gue balas kalau ada yang ketik persis \"Test\" di channel. Keganggu? Ketik !diamtest buat matiin. Aktifin lagi kapan aja pakai !aktiftest.)",
-    "\n(Ini balesan otomatis krn kamu ngetik \"test\" di channel. Ga suka? !diamtest buat stop. !aktiftest kalau mau nyalain lagi nanti.)",
-    "\n(Fitur auto-reply utk kata \"Test\" ini bisa dimatiin kalau ganggu — ketik !diamtest. Nanti tinggal !aktiftest buat nyalain lagi.)",
+    "\n(Btw, gue balas otomatis kalau ada yang ketik persis \"Test\" di channel. Keganggu? Ketik !senyap buat matiin. Aktifin lagi kapan aja pakai !aktif. Ketik !cmd buat liat semua fitur lain.)",
+    "\n(Ini balesan otomatis krn kamu ketik \"test\" di channel. Ga suka? !senyap buat stop. !aktif kalau mau nyalain lagi nanti. Ada !cmd juga kalau mau liat fitur lainnya.)",
+    "\n(Fitur auto-reply ini nyala kalau kamu ketik persis \"Test\". Bisa dimatiin — ketik !senyap. Nanti tinggal !aktif buat nyalain lagi. Ketik !cmd buat liat semua yang bisa gue bantu.)",
 ]
 
 
