@@ -48,7 +48,10 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 
 
 def _maps_link(lat, lon):
-    return f"maps.google.com/?q={lat:.5f},{lon:.5f}"
+    # %2C (not a raw comma) and an explicit https:// scheme — Meshtastic's
+    # link auto-detection stops at a bare comma and often won't linkify a
+    # bare "maps.google.com/..." without a scheme at all.
+    return f"https://maps.google.com/?q={lat:.5f}%2C{lon:.5f}"
 
 
 def _best_by_type_from_rows(rows, lat, lon):

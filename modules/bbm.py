@@ -267,7 +267,10 @@ def _nearest_spbu_block(lat, lon, limit=3, radius_km=15):
     lines = ["⛽ SPBU Terdekat:"]
     for dist, name, elat, elon in candidates:
         lines.append(f"  {name} (~{dist:.1f} km)")
-        lines.append(f"    maps.google.com/?q={elat:.5f},{elon:.5f}")
+        # %2C (not a raw comma) + explicit https:// — a bare comma trips up
+        # Meshtastic's link auto-detection, and a schemeless "maps.google.com"
+        # often won't get linkified as tappable at all.
+        lines.append(f"    https://maps.google.com/?q={elat:.5f}%2C{elon:.5f}")
     return "\n".join(lines)
 
 
