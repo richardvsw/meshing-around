@@ -4,6 +4,7 @@
 import threading
 import meshtastic.serial_interface #pip install meshtastic or use launch.sh for venv
 from meshtastic import portnums_pb2
+from meshtastic.protobuf import mesh_pb2
 import meshtastic.tcp_interface
 import meshtastic.ble_interface
 import time
@@ -1048,6 +1049,32 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
         return True
     except Exception as e:
         logger.error(f"System: Exception during send_message: {e} (message length: {len(message)})")
+        return False
+
+def send_reaction(emoji_char, reply_to_id, nodeid=0, nodeInt=1, ch=0):
+    """Send a Meshtastic emoji tapback reaction (not a text message) to
+    reply_to_id — the packet id of the message being reacted to.
+
+    sendText()/sendData() don't expose the protocol's `emoji` field, so this
+    builds the MeshPacket manually the same way MeshInterface.sendData()
+    does internally, with decoded.emoji=1 and decoded.reply_id set. nodeid=0
+    sends to a channel (like send_message's own convention); a specific
+    nodeid sends a DM reaction."""
+    interface = globals()[f'interface{nodeInt}']
+    try:
+        meshPacket = mesh_pb2.MeshPacket()
+        meshPacket.channel = ch
+        meshPacket.decoded.payload = emoji_char.encode('utf-8')
+        meshPacket.decoded.portnum = portnums_pb2.PortNum.TEXT_MESSAGE_APP
+        meshPacket.decoded.emoji = 1
+        meshPacket.decoded.reply_id = reply_to_id
+        meshPacket.id = interface._generatePacketId()
+        destinationId = nodeid if nodeid else meshtastic.BROADCAST_ADDR
+        interface._sendPacket(meshPacket, destinationId)
+        logger.debug(f"System: Sent reaction {emoji_char} to reply_id {reply_to_id} via Device{nodeInt}")
+        return True
+    except Exception as e:
+        logger.error(f"System: Exception during send_reaction: {e}")
         return False
 
 def send_raw_bytes(nodeid, raw_bytes, nodeInt=1, channel=0, portnum=256, want_ack=True, reply_id=None):
