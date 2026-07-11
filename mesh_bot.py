@@ -10,6 +10,7 @@ except ImportError:
 import asyncio
 import time # for sleep, get some when you can :)
 import random
+import re
 from datetime import datetime
 from modules.log import logger, CustomFormatter, msgLogger, getPrettyTime
 import modules.settings as my_settings
@@ -495,16 +496,12 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
     msg += "\n🗺 " + route
     if float(snr) != 0 or float(rssi) != 0:
         msg += "\n📶 SNR:" + str(snr) + " RSSI:" + str(rssi)
-    # node count + current WIB time
+    # current WIB time — dropped the "X/Y node dikenal bot online" count that
+    # used to sit alongside this, wasn't useful info for a ping/test reply
     try:
         from datetime import datetime, timezone, timedelta
         _wib = datetime.now(timezone(timedelta(hours=7)))
-        _iface = globals().get(f'interface{deviceID}')
-        _nodes = list(_iface.nodes.values()) if _iface and _iface.nodes else []
-        _total = len(_nodes)
-        _cutoff = datetime.now(timezone.utc).timestamp() - 3600
-        _online = sum(1 for n in _nodes if n.get('lastHeard', 0) > _cutoff)
-        msg += f"\n👥 {_online}/{_total} node dikenal bot online • 🕐 {_wib.strftime('%H:%M')} WIB"
+        msg += f"\n🕐 {_wib.strftime('%H:%M')} WIB"
     except Exception:
         pass
 
@@ -2481,16 +2478,17 @@ def onReceive(packet, interface):
                         msgLogger.info(f"Device:{rxNode} Channel:{channel_number} | {get_name_from_number(message_from_id, 'long', rxNode)} | DM | " + message_log_string)
             else:
                 # message is on a channel
-                # Exact whole-message magic words ("Test"/"test", "Ping"/"ping",
-                # "CQ"/"cq", etc — see modules/magicword_pref.MAGIC_WORDS, the
-                # common ham-radio "just checking my radio works" convention)
+                # Exact whole-message "Test"/"test" (see modules/magicword_pref.
+                # MAGIC_WORDS), or a "Test ...?"/"test ...?" question — the
+                # common ham-radio "just checking my radio works" convention —
                 # bypass the normal ! requirement below, but ONLY for these
-                # literal matches, not any bang-less message. "test 123" or
-                # "let's test this" do NOT match; only the message being
-                # precisely one of those words, nothing before or after.
+                # patterns, not any bang-less message. "test 123" (no ?) or
+                # "let's test this" do NOT match.
                 # Per-node opt-out via !senyap/!aktif — an opted-out node is
                 # treated exactly as if this weren't a magic word at all.
-                is_bare_magic_word = (message_string.strip() in magicword_pref.MAGIC_WORDS
+                stripped_msg = message_string.strip()
+                is_test_question = bool(re.match(r'^(?:Test|test)\b.*\?$', stripped_msg))
+                is_bare_magic_word = ((stripped_msg in magicword_pref.MAGIC_WORDS or is_test_question)
                                       and not magicword_pref.is_opted_out(message_from_id))
                 if messageTrap(message_string) or is_bare_magic_word:
                     # message is for us to respond to, or is it...
@@ -2509,6 +2507,14 @@ def onReceive(packet, interface):
                         channel_reply = auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM)
                         if is_bare_magic_word:
                             channel_reply += random.choice(magicword_pref.NOTICE_TEMPLATES)
+                        # 🟢 reaction alongside the normal reply — bare Test/
+                        # test and Test...?/test...? questions (unless !senyap
+                        # is active), and !cmd with no args always (an
+                        # explicit command, not unsolicited, so it isn't
+                        # gated by the opt-out).
+                        is_cmd_only = stripped_msg.lower() == "!cmd"
+                        if (is_bare_magic_word or is_cmd_only) and packet_id:
+                            send_reaction("🟢", packet_id, 0, rxNode, channel_number)
                         if my_settings.useDMForResponse:
                             # respond to channel message via direct message (no reply_id — avoids threading back into LongFast)
                             send_message(channel_reply, channel_number, message_from_id, rxNode)

@@ -26,24 +26,42 @@ sys.path.insert(0, "/opt/meshing-around")
 WIB = timezone(timedelta(hours=7))
 CACHE_FILE = "/opt/meshing-around/data/longfast_hourly_summary.json"
 FEED_URL = "http://localhost:8080/api/channels/LongFast/messages"
-MIN_MESSAGES = 3  # skip the LLM call if LongFast has been too quiet to summarize meaningfully
+MIN_MESSAGES = 3   # skip the LLM call if LongFast has been too quiet to summarize meaningfully
+MAX_HISTORY = 48   # ~2 days of hourly entries
 
 
-def _write_cache(hour_label, summary, message_count):
+def _write_cache(date_label, hour_label, summary, message_count):
     os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+    try:
+        with open(CACHE_FILE) as f:
+            history = json.load(f).get("history", [])
+    except Exception:
+        history = []
+
+    entry = {
+        "date": date_label,
+        "hour_label": hour_label,
+        "summary": summary,
+        "message_count": message_count,
+        "generated_at": int(time.time()),
+    }
+    # This hour gets re-run every 15 min while it's in progress — replace
+    # its existing entry instead of appending duplicates. Keyed on
+    # (date, hour_label), not hour_label alone, so "22:00" from yesterday
+    # doesn't collide with today's.
+    history = [h for h in history if (h.get("date"), h.get("hour_label")) != (date_label, hour_label)]
+    history.insert(0, entry)
+    history = history[:MAX_HISTORY]
+
     with open(CACHE_FILE, "w") as f:
-        json.dump({
-            "hour_label": hour_label,
-            "summary": summary,
-            "message_count": message_count,
-            "generated_at": int(time.time()),
-        }, f)
+        json.dump({"history": history}, f)
 
 
 def main():
     now = datetime.now(WIB)
     hour_start = now.replace(minute=0, second=0, microsecond=0)
     hour_start_ts = int(hour_start.timestamp())
+    date_label = hour_start.strftime("%Y-%m-%d")
     hour_label = hour_start.strftime("%H:%M")
 
     try:
@@ -58,7 +76,7 @@ def main():
     msgs = [m for m in data.get("messages", []) if m.get("direction") == "in"]
 
     if len(msgs) < MIN_MESSAGES:
-        _write_cache(hour_label, None, len(msgs))
+        _write_cache(date_label, hour_label, None, len(msgs))
         print(f"Too quiet ({len(msgs)} msgs since {hour_label}) — wrote empty cache")
         return
 
@@ -79,7 +97,7 @@ def main():
         f"{transcript}"
     )
     summary = send_openwebui_query(prompt, max_tokens=150)
-    _write_cache(hour_label, summary, len(msgs))
+    _write_cache(date_label, hour_label, summary, len(msgs))
     print(f"Wrote summary for {hour_label}: {len(msgs)} messages")
 
 

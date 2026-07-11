@@ -27,12 +27,13 @@ MAGIC_WORDS = frozenset(("Test", "test"))
 
 # Short on purpose — this used to be a 3-chunk essay explaining the whole
 # mechanism, which is both annoying over LoRa and unclear to anyone who
-# doesn't already know what "!senyap"/"!cmd" mean. Just: this was
-# automatic, here's how to stop it, here's where to see everything else.
+# doesn't already know what "!senyap"/"!aktif"/"!cmd" mean. Just: this was
+# automatic, here's how to stop/restart it, here's where to see everything
+# else.
 NOTICE_TEMPLATES = [
-    "\n💡 Balesan otomatis. Matiin: !senyap. Fitur lain: !cmd",
-    "\n💡 Ini auto-reply. Ga mau lagi? !senyap. Liat fitur: !cmd",
-    "\n💡 Otomatis nih. !senyap buat stop. !cmd buat liat lainnya",
+    "\n💡 Balesan otomatis. Matiin: !senyap, nyalain: !aktif. Fitur lain: !cmd",
+    "\n💡 Ini auto-reply. Stop: !senyap, nyalain lagi: !aktif. Liat fitur: !cmd",
+    "\n💡 Otomatis nih. !senyap = stop, !aktif = nyalain lagi. !cmd = fitur lainnya",
 ]
 
 

@@ -81,9 +81,10 @@ def get_ringkasan(message=None, message_from_id=None, deviceID=None):
     # and avoids re-summarizing the same hour's chat on every request.
     try:
         with open(_LONGFAST_SUMMARY_CACHE) as f:
-            c = json.load(f)
-        age = time.time() - c.get("generated_at", 0)
-        if c.get("summary") and age < _LONGFAST_SUMMARY_MAX_AGE:
+            history = json.load(f).get("history", [])
+        c = history[0] if history else None
+        age = time.time() - c.get("generated_at", 0) if c else None
+        if c and c.get("summary") and age < _LONGFAST_SUMMARY_MAX_AGE:
             lines.append(f"💬 Obrolan LongFast sejak jam {c['hour_label']}: {c['summary']}")
             lines.append("   Yuk gabung ngobrol! 👋")
     except FileNotFoundError:
