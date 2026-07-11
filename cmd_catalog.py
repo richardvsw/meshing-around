@@ -250,7 +250,9 @@ def simulate_command(text: str):
             if state:   parts.append(state)
             area = ", ".join(filter(None, parts)) or (loc.address if loc else "?")
             grid = mh.to_maiden(float(lat), float(lon))
-            gmaps = f"https://maps.google.com/?q={lat},{lon}"
+            # %2C (not a raw comma) — a bare comma truncates the tappable
+            # link in Meshtastic's link auto-detection.
+            gmaps = f"https://maps.google.com/?q={float(lat):.5f}%2C{float(lon):.5f}"
             return True, f"📍 {area}\n🌐 Grid: {grid}\n🗺️ {gmaps}"
 
         if word == "pesan":

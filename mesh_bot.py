@@ -1850,7 +1850,9 @@ def handle_whereami(message_from_id, deviceID, channel_number):
         if state:   parts.append(state)
         area = ', '.join(filter(None, parts)) or loc.address
         grid = mh.to_maiden(float(lat), float(lon))
-        gmaps = f"https://maps.google.com/?q={lat},{lon}"
+        # %2C (not a raw comma) — a bare comma truncates the tappable link in
+        # Meshtastic's link auto-detection.
+        gmaps = f"https://maps.google.com/?q={float(lat):.5f}%2C{float(lon):.5f}"
         msg = f"📍 {area}\n🌐 Grid: {grid}\n🗺️ {gmaps}"
         return msg
     except Exception as e:
