@@ -2473,7 +2473,13 @@ def onReceive(packet, interface):
                         msgLogger.info(f"Device:{rxNode} Channel:{channel_number} | {get_name_from_number(message_from_id, 'long', rxNode)} | DM | " + message_log_string)
             else:
                 # message is on a channel
-                if messageTrap(message_string):
+                # Exact whole-message "Test"/"test" (the common ham-radio "just
+                # checking my radio works" convention) — bypasses the normal !
+                # requirement below, but ONLY for this literal match, not any
+                # bang-less message. "test 123" or "let's test this" do NOT
+                # match; only the message being precisely "Test" or "test".
+                is_bare_test_ping = message_string.strip() in ("Test", "test")
+                if messageTrap(message_string) or is_bare_test_ping:
                     # message is for us to respond to, or is it...
                     if my_settings.ignoreDefaultChannel and channel_number == my_settings.publicChannel:
                         logger.debug(f"System: Ignoring CMD:{message_log_string} From: {get_name_from_number(message_from_id, 'short', rxNode)} Default Channel:{channel_number}")
@@ -2481,7 +2487,7 @@ def onReceive(packet, interface):
                         logger.debug(f"System: Ignoring CMD:{message_log_string} From: {get_name_from_number(message_from_id, 'short', rxNode)} Cantankerous Node")
                     elif str(channel_number) in my_settings.ignoreChannels:
                         logger.debug(f"System: Ignoring CMD:{message_log_string} From: {get_name_from_number(message_from_id, 'short', rxNode)} Ignored Channel:{channel_number}")
-                    elif my_settings.cmdBang and not message_string.startswith("!"):
+                    elif my_settings.cmdBang and not message_string.startswith("!") and not is_bare_test_ping:
                         logger.debug(f"System: Ignoring CMD:{message_log_string} From: {get_name_from_number(message_from_id, 'short', rxNode)} Didnt sound like they meant it")
                     else:
                         # message is for bot to respond to, seriously this time..
