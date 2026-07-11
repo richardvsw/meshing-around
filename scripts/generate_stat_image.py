@@ -13,7 +13,9 @@ same data flasher.meshtastic.org itself uses — no API key needed:
 Otherwise pure PIL, no matplotlib/numpy — keeps the dependency footprint
 small on a server that otherwise has no image-processing libs at all.
 """
+import base64
 import collections
+import configparser
 import json
 import os
 import subprocess
@@ -29,6 +31,7 @@ from PIL import Image, ImageDraw, ImageFont
 WIB = timezone(timedelta(hours=7))
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 OUT_PATH = "/opt/meshing-around/data/stat_snapshot.png"
+_CONFIG_PATH = "/opt/meshing-around/config.ini"
 
 _DEVICE_HW_URL = "https://api.meshtastic.org/resource/deviceHardware"
 _DEVICE_HW_CACHE = "/opt/meshing-around/data/device_hardware.json"
@@ -592,6 +595,42 @@ def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
     d.text((x + 20, y + h - 30), caption, font=font(13), fill=MUTED)
 
 
+def _get_imgbb_key():
+    try:
+        cfg = configparser.ConfigParser()
+        cfg.read(_CONFIG_PATH)
+        return cfg.get("statImage", "imgbbAPIKey", fallback="").strip() or None
+    except Exception as e:
+        print(f"config.ini read failed: {e}")
+        return None
+
+
+def upload_to_imgbb(path):
+    """Uploads the PNG to imgbb and returns its public URL, or None if no
+    key is configured or the upload fails — callers should treat this as
+    best-effort and fall back to the plain-text stat reply either way,
+    since Meshtastic can't send images directly regardless."""
+    key = _get_imgbb_key()
+    if not key:
+        print("no imgbbAPIKey configured in config.ini's [statImage] section — skipping upload")
+        return None
+    try:
+        import requests
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read())
+        resp = requests.post(
+            "https://api.imgbb.com/1/upload",
+            data={"key": key, "image": b64, "expiration": 15 * 86400},  # auto-expire in 15 days, matches node_days-ish retention spirit
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["data"]["url"] if data.get("success") else None
+    except Exception as e:
+        print(f"imgbb upload failed: {e}")
+        return None
+
+
 def main():
     # Optional: short name/callsign of whoever sent !stat, so the sidebar
     # zoom-inset can center on them. Passed as argv[1] by the bot handler;
@@ -608,12 +647,6 @@ def main():
     total = len(nodes)
     hw_map = _get_device_hardware()
     hw_counter = collections.Counter(_normalize_hw(n.get("hw", "?"), hw_map) for n in nodes)
-    matched = 0
-    for n in nodes:
-        short = (n.get("short") or "").strip().upper()
-        if short in registry:
-            matched += 1
-    pct = round(matched / total * 100) if total else 0
 
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
@@ -632,15 +665,11 @@ def main():
     main_w = W - 80 - SIDEBAR_W - 24
     sidebar_x = main_x + main_w + 24
 
-    # ── top stat row: 3 cards ──────────────────────────────────────────────
+    # ── top stat row ─────────────────────────────────────────────────────
     card_y = 120
     card_h = 90
-    gap = 16
-    card_w = (main_w - gap * 2) // 3
+    card_w = main_w
     stat_card(d, main_x, card_y, card_w, card_h, "NODE TERDETEKSI", str(total), ACCENT)
-    stat_card(d, main_x + card_w + gap, card_y, card_w, card_h, "NODE TERDAFTAR", f"{matched}/{total}", ACCENT)
-    stat_card(d, main_x + (card_w + gap) * 2, card_y, card_w, card_h, "% TERDAFTAR", f"{pct}%",
-              ACCENT if pct >= 50 else (227, 179, 65))
 
     # ── hardware population bar chart (with device icons) ──────────────────
     chart_y = card_y + card_h + 30
@@ -702,6 +731,13 @@ def main():
     img = img.crop((0, 0, W, footer_y + 60))
     img.save(OUT_PATH)
     print(f"Saved {OUT_PATH} ({img.width}x{img.height})")
+
+    # Printed as its own line (not mixed into the "Saved ..." line) so a
+    # caller like statistik.py can grep stdout for this prefix without
+    # parsing the rest of this script's diagnostic output.
+    url = upload_to_imgbb(OUT_PATH)
+    if url:
+        print(f"URL: {url}")
 
 
 if __name__ == "__main__":

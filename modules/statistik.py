@@ -15,10 +15,19 @@ import io
 import json
 import logging
 import os
+import subprocess
+import sys
 import time
 import urllib.request
 
 logger = logging.getLogger(__name__)
+
+# Renders the PNG infographic and uploads it to imgbb (see the script for
+# details) — run as a subprocess, not imported, so its PIL/network/
+# rsvg-convert work stays out of the long-running bot process and a slow
+# or failing run can't take mesh_bot down with it.
+_STAT_IMAGE_SCRIPT = "/opt/meshing-around/scripts/generate_stat_image.py"
+_STAT_IMAGE_TIMEOUT = 90
 
 _REGISTRY_CSV_URL = (
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vT_DJ8eDFqR9Hk5S5pEobXPatlhSV9VYSu6qDmdvm0kTZ0O-o4guqL4RJqOfaeOwVZ0eQhyGC1P0sv7/pub?output=csv"
@@ -95,6 +104,26 @@ def _get_registry():
         return {}
 
 
+def _generate_stat_image_url(caller_short):
+    """Runs generate_stat_image.py (which fetches its own node data from
+    rivbot-ui's REST API, independent of the live interface nodes used for
+    the text stats above) and returns the imgbb URL it printed, or None on
+    any failure/timeout — the text reply is always sent either way."""
+    try:
+        args = [sys.executable, _STAT_IMAGE_SCRIPT]
+        if caller_short:
+            args.append(caller_short)
+        result = subprocess.run(args, capture_output=True, text=True, timeout=_STAT_IMAGE_TIMEOUT)
+        for line in result.stdout.splitlines():
+            if line.startswith("URL: "):
+                return line[len("URL: "):].strip()
+        logger.warning("Stat: image script produced no URL (rc=%s): %s",
+                        result.returncode, result.stderr[-500:])
+    except Exception as e:
+        logger.warning("Stat: image generation/upload failed: %s", e)
+    return None
+
+
 def get_statistik(nodes, caller_num=None):
     """nodes: list of raw node dicts from an already-open interface.nodes
     (e.g. list(interfaceN.nodes.values())) — this module never connects on
@@ -148,5 +177,10 @@ def get_statistik(nodes, caller_num=None):
         top_cities = ", ".join(f"{c} ({n})" for c, n in matched_cities.most_common(5))
         lines.append(f"   Kota teratas: {top_cities}")
     lines.append(f"   Belum terdaftar? Isi form: {_REGISTRY_FORM_URL}")
+
+    image_url = _generate_stat_image_url(caller_short)
+    if image_url:
+        lines.append("")
+        lines.append(f"📸 Grafik lengkap: {image_url}")
 
     return "\n".join(lines)
