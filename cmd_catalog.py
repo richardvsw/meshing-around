@@ -8,10 +8,10 @@ CMDS = [
     # Informasi
     ("!cuaca",         "Cuaca real-time di lokasimu ☀️🌧️"),
     ("!bencana",       "Ringkasan bencana: gempa, gunung, banjir 🚨"),
-    ("!berita",        "Headline terkini: Tempo, CNN & BBC Indonesia 📰"),
+    ("!berita [topik]", "Headline berita 📰 — topik: teknologi, otomotif, olahraga, ekonomi, hiburan, dunia"),
     ("!libur",         "Libur nasional berikutnya + hitung mundur 📅"),
     # Ekonomi
-    ("!hargabbm",      "Harga BBM hari ini per provinsi ⛽ — auto-detect lokasimu!"),
+    ("!hargabbm",      "Harga BBM + 3 SPBU terdekat ⛽ — auto-detect lokasimu!"),
     ("!kursrupiah",    "Kurs Rupiah vs 9 mata uang dunia 💱"),
     # Utilitas
     ("!konversi",    "Konversi satuan: jarak, berat, suhu, dll"),

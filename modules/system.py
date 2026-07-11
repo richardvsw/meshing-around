@@ -198,6 +198,11 @@ def get_banjir_with_location(nodeID, deviceID, message=None):
     return _get_banjir_base(message, location[0], location[1], gps_available=gps_available)
 
 from modules.bencana import get_bencana
+
+def get_spbu_with_location(nodeID, deviceID, message=None):
+    location = get_node_location(nodeID, deviceID)
+    gps_available = not (location[0] == latitudeValue and location[1] == longitudeValue)
+    return _get_spbu_base(message, location[0], location[1], gps_available=gps_available)
 from modules.konversi import get_konversi
 from modules.morse import get_morse
 from modules.gunung import get_gunung

@@ -34,7 +34,44 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return 2 * r * math.asin(math.sqrt(a))
 
 
+_RIVER_CACHE_PATH = "/opt/meshing-around/data/river_names.json"
+
+
+def _river_cache_key(lat, lon):
+    # ~1km grid — the nearest river to a fixed spot never changes, so any
+    # node that isn't moving hits the cache after its first lookup.
+    return f"{round(lat, 2)},{round(lon, 2)}"
+
+
 def _nearest_river_name(lat, lon):
+    """Cache-first wrapper: Overpass is slow (~10s) and rate-limited, but the
+    answer for a given location is permanent. Missing/no-river results are
+    cached too (as null) so dead zones don't re-query every time."""
+    import json, os
+    key = _river_cache_key(lat, lon)
+    cache = {}
+    try:
+        if os.path.exists(_RIVER_CACHE_PATH):
+            with open(_RIVER_CACHE_PATH) as f:
+                cache = json.load(f)
+            if key in cache:
+                return cache[key] or None
+    except Exception as e:
+        logger.debug(f"System: river name cache read failed: {e}")
+        cache = {}
+
+    name = _nearest_river_name_live(lat, lon)
+    try:
+        cache[key] = name
+        with open(_RIVER_CACHE_PATH, "w") as f:
+            json.dump(cache, f)
+        os.chmod(_RIVER_CACHE_PATH, 0o666)
+    except Exception as e:
+        logger.debug(f"System: river name cache write failed: {e}")
+    return name
+
+
+def _nearest_river_name_live(lat, lon):
     if requests is None:
         return None
     query = (
@@ -76,9 +113,12 @@ def get_banjir(message=None, lat=None, lon=None, gps_available=True):
 
     river_name = _nearest_river_name(lat, lon)
     if river_name:
+        # OSM names usually already start with "Sungai"/"Kali" — avoid "Sungai Sungai X"
+        if not river_name.lower().startswith(("sungai", "kali", "ci")):
+            river_name = f"Sungai {river_name}"
         report = report.replace(
             "🌊 Debit Sungai Terdekat",
-            f"🌊 Sungai {river_name} (perkiraan terdekat)",
+            f"🌊 {river_name} (perkiraan terdekat)",
             1,
         )
     return report
