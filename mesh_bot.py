@@ -57,12 +57,24 @@ def _ch_reply(text, ch, from_id, device_id, is_dm):
     return ""
 
 
+# Reached only when a trap word matched (so the bot decided to reply) but no
+# command_handler entry exists for it — a trap_list/handler mismatch, not
+# something a normal user should ever be able to trigger with plain random
+# words. Randomized so repeat offenders don't see the exact same line twice.
+UNHANDLED_TRAP_RESPONSES = [
+    "🤖 Hmm, itu kedengarannya kayak perintah tapi belum ada isinya. Ketik !cmd buat liat yang beneran ada.",
+    "🤖 I'm sorry, I'm afraid I can't do that. Coba !cmd buat liat daftar perintah yang jalan.",
+    "🤖 Perintah itu belum kesambung ke fitur manapun. Ketik !cmd ya.",
+    "🤖 Waduh, ini bug di daftar kata kunci gue — belum ada fiturnya. !cmd buat yang lain.",
+]
+
+
 def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_number, deviceID, isDM):
     global cmdHistory
     ack_alarm(message_from_id)  # silence any active alarm
     #Auto response to messages
     message_lower = message.lower()
-    bot_response = "🤖I'm sorry, I'm afraid I can't do that."
+    bot_response = random.choice(UNHANDLED_TRAP_RESPONSES)
 
     # Command List processes system.trap_list. system.messageTrap() sends any commands to here
     default_commands = {
@@ -180,11 +192,14 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "libur":     lambda: get_libur(message),
     "ringkasan": lambda: get_ringkasan(message, message_from_id, deviceID),
 
+    "repeater": lambda: handle_repeaterQuery(message_from_id, deviceID, channel_number),
     "riverflow": lambda: handle_riverFlow(message, message_from_id, deviceID),
     "rlist": lambda: handle_repeaterQuery(message_from_id, deviceID, channel_number),
     "satpass": lambda: handle_satpass(message_from_id, deviceID, message),
     "setemail": lambda: handle_email(message_from_id, message),
     "setsms": lambda: handle_sms( message_from_id, message),
+    "infosistem": lambda: handle_lheard(message, message_from_id, deviceID, isDM),
+    "sysinfo": lambda: handle_lheard(message, message_from_id, deviceID, isDM),
     "sitrep": lambda: handle_lheard(message, message_from_id, deviceID, isDM),
     "sms:": lambda: handle_sms(message_from_id, message),
     "solar": lambda: drap_xray_conditions() + "\n" + solar_conditions() + "\n" + get_noaa_scales_summary(),
