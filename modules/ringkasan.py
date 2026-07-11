@@ -1,15 +1,20 @@
 """Flagship dashboard command — one compact snapshot combining gempa,
-gunung, kurs, and libur. Built only from modules that expose clean
-structured data (raw JSON / parsed lists), not modules whose only public
-function returns pre-formatted reply text — parsing formatted text a
-second time is fragile and breaks silently if that module's wording
-changes. Weather (!cuaca) and fuel prices (!hargabbm) are skipped for that
-reason: mesh_bot.py's handle_wxc() and modules/bbm.py's get_bbm_prices()
-only return final display text, no structured data to pull a single
-number from safely."""
+gunung, kurs, libur, and a rolling LongFast chat-activity summary. Built
+only from modules that expose clean structured data (raw JSON / parsed
+lists), not modules whose only public function returns pre-formatted
+reply text — parsing formatted text a second time is fragile and breaks
+silently if that module's wording changes. Weather (!cuaca) and fuel
+prices (!hargabbm) are skipped for that reason: mesh_bot.py's
+handle_wxc() and modules/bbm.py's get_bbm_prices() only return final
+display text, no structured data to pull a single number from safely."""
+import json
 import logging
+import time
 
 logger = logging.getLogger(__name__)
+
+_LONGFAST_SUMMARY_CACHE = "/opt/meshing-around/data/longfast_hourly_summary.json"
+_LONGFAST_SUMMARY_MAX_AGE = 3600  # if the hourly refresh timer stalls, stop showing stale chat
 
 
 def get_ringkasan(message=None, message_from_id=None, deviceID=None):
@@ -62,6 +67,22 @@ def get_ringkasan(message=None, message_from_id=None, deviceID=None):
             lines.append(f"📅 {rel} ke {when} ({name})")
     except Exception as e:
         logger.debug("ringkasan libur error: %s", e)
+
+    # ── Obrolan LongFast ──────────────────────────────────────────────────
+    # Pre-cached by scripts/summarize_longfast.py (systemd timer, every 15
+    # min) rather than calling the LLM live here — keeps !ringkasan fast
+    # and avoids re-summarizing the same hour's chat on every request.
+    try:
+        with open(_LONGFAST_SUMMARY_CACHE) as f:
+            c = json.load(f)
+        age = time.time() - c.get("generated_at", 0)
+        if c.get("summary") and age < _LONGFAST_SUMMARY_MAX_AGE:
+            lines.append(f"💬 Obrolan LongFast sejak jam {c['hour_label']}: {c['summary']}")
+            lines.append("   Yuk gabung ngobrol! 👋")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.debug("ringkasan longfast summary error: %s", e)
 
     if len(lines) <= 2:
         return "❌ Gagal mengambil data ringkasan. Coba lagi nanti."
