@@ -274,11 +274,85 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
             cmdHistory.append({'nodeID': message_from_id, 'cmd':  cmds[0]['cmd'], 'time': time.time()})
     return bot_response
 
+# Time-of-day greeting shown once per period (pagi/siang/sore/malam) the first
+# time a user types !cmd in that window; resets automatically once the next
+# window starts. {message_from_id: "YYYY-MM-DD-period"}
+_cmd_greeting_tracker = {}
+
+GREETING_TEMPLATES = {
+    'pagi': [
+        "Pagi, {name}! \u2600\ufe0f Semangat mulai hari ya!",
+        "Selamat pagi, {name}! \U0001F324\ufe0f Udah sarapan belum bro?",
+        "Pagiii {name}! \U0001F413 Siap-siap gercep hari ini!",
+        "Morning, {name}! \u2615 Yuk mulai hari, gas !cmd dulu.",
+        "Woy pagi {name}! \U0001F30D Semoga harinya lancar terus.",
+    ],
+    'siang': [
+        "Siang, {name}! \u2600\ufe0f Udah makan siang belum?",
+        "Selamat siang, {name}! \U0001F35A Jangan lupa istirahat bentar ya.",
+        "Halo {name}, siang bolong nih! \U0001F525 Tetep semangat!",
+        "Siang bro {name}! \U0001F31E Gimana kabar hari ini?",
+        "Eh {name}, udah siang. \U0001F324\ufe0f Jangan lupa minum ya.",
+    ],
+    'sore': [
+        "Sore, {name}! \U0001F307 Udah mau pulang belum nih?",
+        "Selamat sore, {name}! \U0001F306 Yuk santai bentar.",
+        "Sore-sore gini enaknya ngopi ya {name} \u2615\U0001F324\ufe0f",
+        "Halo {name}, sore yang cerah! \U0001F325\ufe0f",
+        "Wih udah sore {name}! \U0001F307 Gaskeun sisa hari ini.",
+    ],
+    'malam': [
+        "Malam, {name}! \U0001F319 Udah makan malam belum?",
+        "Selamat malam, {name}! \u2728 Jangan begadang mulu ya.",
+        "Malem bro {name}! \U0001F30C Gue masih standby kok.",
+        "Halo {name}, malam yang tenang nih \U0001F303",
+        "Malem {name}! \U0001F31A Istirahat yang cukup ya.",
+    ],
+}
+
+IDLE_FOLLOWUP_TEMPLATES = [
+    "Hei {name}! \U0001F44B Masih ada yang bisa gue bantu ga bro? Ketik !cmd buat liat semua fitur yang ada. Gue standby nih! \U0001F604",
+    "Woy {name}, masih di situ? \U0001F440 Ketik !cmd kalau butuh sesuatu, gue standby terus kok!",
+    "{name}, gue masih nungguin nih \u23F3 Ketik !cmd buat liat menu lengkapnya ya!",
+    "Halo lagi {name}! \U0001F44B Kalau masih butuh bantuan, tinggal ketik !cmd aja.",
+    "Eh {name}, jangan sungkan ya \U0001F60A Ketik !cmd kapan aja kalau perlu bantuan gue.",
+    "{name}, gue standby terus di sini \U0001F6F0\ufe0f Ketik !cmd buat liat semua fitur!",
+]
+
+
+def _greeting_period(hour: int) -> str:
+    if 4 <= hour < 11:
+        return 'pagi'
+    if 11 <= hour < 15:
+        return 'siang'
+    if 15 <= hour < 18:
+        return 'sore'
+    return 'malam'
+
+
+def _maybe_cmd_greeting(message_from_id, deviceID):
+    """Return a randomized time-of-day greeting the first time this node types
+    !cmd in the current pagi/siang/sore/malam window, else None."""
+    now = datetime.now()
+    period = _greeting_period(now.hour)
+    period_key = f"{now.date()}-{period}"
+    if _cmd_greeting_tracker.get(message_from_id) == period_key:
+        return None
+    _cmd_greeting_tracker[message_from_id] = period_key
+    user_name = get_name_from_number(message_from_id, 'short', deviceID)
+    template = random.choice(GREETING_TEMPLATES[period])
+    return template.format(name=user_name)
+
+
 def handle_cmd(message, message_from_id, deviceID):
     # command list + response logic lives in cmd_catalog.py (shared, pure,
     # no side effects) so the rivbot-ui simulator can call the exact same code
     from cmd_catalog import handle_cmd_pure
-    return handle_cmd_pure(message)
+    response = handle_cmd_pure(message)
+    greeting = _maybe_cmd_greeting(message_from_id, deviceID)
+    if greeting:
+        response = f"{greeting}\n\n{response}"
+    return response
 
 def isPlayingGame(message_from_id):
     global gameTrackers
@@ -2541,10 +2615,7 @@ async def idleFollowupLoop():
                 myNodeNum = globals().get(f'myNodeNum{deviceID}', 777)
                 bot_name = get_name_from_number(myNodeNum, 'long', deviceID)
                 user_name = get_name_from_number(nodeID, 'long', deviceID)
-                msg = (
-                    f"Hei {user_name}! 👋 Masih ada yang bisa gue bantu ga bro? "
-                    f"Ketik !cmd buat liat semua fitur yang ada. Gue standby nih! 😄"
-                )
+                msg = random.choice(IDLE_FOLLOWUP_TEMPLATES).format(name=user_name)
                 send_message(msg, 0, nodeID, deviceID)
                 logger.info(f"System: Idle follow-up sent to {user_name} ({nodeID})")
                 to_remove.append(nodeID)
