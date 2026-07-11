@@ -499,7 +499,7 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
         _total = len(_nodes)
         _cutoff = datetime.now(timezone.utc).timestamp() - 3600
         _online = sum(1 for n in _nodes if n.get('lastHeard', 0) > _cutoff)
-        msg += f"\n👥 {_online}/{_total} node online • 🕐 {_wib.strftime('%H:%M')} WIB"
+        msg += f"\n👥 {_online}/{_total} node dikenal bot online • 🕐 {_wib.strftime('%H:%M')} WIB"
     except Exception:
         pass
 
@@ -1764,8 +1764,9 @@ def handle_lheard(message, nodeid, deviceID, isDM):
         # trim the last \n
         bot_response = bot_response[:-1]
 
-    # get count of nodes heard
-    bot_response += f"\n👀 Total di mesh: {len(seenNodes)} node"
+    # get count of nodes heard — this is only what THIS bot happens to know
+    # (bounded by its own uptime/nodedb), not the mesh's true total size
+    bot_response += f"\n👀 Dikenal bot ini: {len(seenNodes)} node"
 
     # bot_response += getNodeTelemetry(deviceID)
     return bot_response
