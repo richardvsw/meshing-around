@@ -188,7 +188,7 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
                                         if globals().get(f'interface{deviceID}') else [],
                                         caller_num=message_from_id),
     "senyap":    lambda: (magicword_pref.opt_out(message_from_id) or
-                          "🔇 Oke, gue diemin semua balesan otomatis (kata ajaib, idle nudge, dad joke) buat node kamu. Perintah !command tetap gue jawab kok. Mau nyalain lagi? Ketik !aktif."),
+                          "🔇 Oke, gue diemin semua balesan otomatis buat node kamu. Perintah !command tetap gue jawab kok. Mau nyalain lagi? Ketik !aktif."),
     "aktif":     lambda: (magicword_pref.opt_in(message_from_id) or
                           "🔊 Oke, balesan otomatis bot gue nyalain lagi buat node kamu."),
     "darurat":   lambda: get_darurat_with_location(message_from_id, deviceID, message),
@@ -2507,9 +2507,8 @@ def onReceive(packet, interface):
                         logger.info(f"Device:{rxNode} Channel:{channel_number} " + CustomFormatter.green + "ReceivedChannel: " + CustomFormatter.white + f"{message_log_string} " + CustomFormatter.purple +\
                                     "From: " + CustomFormatter.white + f"{get_name_from_number(message_from_id, 'long', rxNode)}")
                         channel_reply = auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM)
-                        if is_bare_magic_word and not magicword_pref.was_notified(message_from_id):
+                        if is_bare_magic_word:
                             channel_reply += random.choice(magicword_pref.NOTICE_TEMPLATES)
-                            magicword_pref.mark_notified(message_from_id)
                         if my_settings.useDMForResponse:
                             # respond to channel message via direct message (no reply_id — avoids threading back into LongFast)
                             send_message(channel_reply, channel_number, message_from_id, rxNode)

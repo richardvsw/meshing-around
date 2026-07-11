@@ -10,9 +10,6 @@ mesh_bot.py's is_bare_magic_word check.
 (opt back in) can never get stuck being silenced along with everything
 else.
 
-Also tracks which nodes have already been shown the one-time "you can
-turn this off" notice, so it's not repeated on every single ping.
-
 Small JSON file, same pattern as the other data/*.json caches in this
 project — no DB needed for a couple hundred node IDs at most.
 """
@@ -41,11 +38,10 @@ def _load():
             with open(_PREF_FILE) as f:
                 data = json.load(f)
             data.setdefault("opted_out", [])
-            data.setdefault("notified", [])
             return data
     except Exception as e:
         logger.warning("MagicWord: pref file load error: %s", e)
-    return {"opted_out": [], "notified": []}
+    return {"opted_out": []}
 
 
 def _save(data):
@@ -59,18 +55,6 @@ def _save(data):
 
 def is_opted_out(node_id):
     return str(node_id) in _load().get("opted_out", [])
-
-
-def was_notified(node_id):
-    return str(node_id) in _load().get("notified", [])
-
-
-def mark_notified(node_id):
-    data = _load()
-    nid = str(node_id)
-    if nid not in data["notified"]:
-        data["notified"].append(nid)
-        _save(data)
 
 
 def opt_out(node_id):
