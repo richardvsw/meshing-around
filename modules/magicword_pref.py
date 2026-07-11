@@ -25,10 +25,14 @@ _PREF_FILE = "/opt/meshing-around/data/magicword_pref.json"
 # "let's test this" do NOT match.
 MAGIC_WORDS = frozenset(("Test", "test"))
 
+# Short on purpose — this used to be a 3-chunk essay explaining the whole
+# mechanism, which is both annoying over LoRa and unclear to anyone who
+# doesn't already know what "!senyap"/"!cmd" mean. Just: this was
+# automatic, here's how to stop it, here's where to see everything else.
 NOTICE_TEMPLATES = [
-    "\n(Btw, gue balas otomatis kalau ada yang ketik persis \"Test\" di channel. Keganggu? Ketik !senyap buat matiin. Aktifin lagi kapan aja pakai !aktif. Ketik !cmd buat liat semua fitur lain.)",
-    "\n(Ini balesan otomatis krn kamu ketik \"test\" di channel. Ga suka? !senyap buat stop. !aktif kalau mau nyalain lagi nanti. Ada !cmd juga kalau mau liat fitur lainnya.)",
-    "\n(Fitur auto-reply ini nyala kalau kamu ketik persis \"Test\". Bisa dimatiin — ketik !senyap. Nanti tinggal !aktif buat nyalain lagi. Ketik !cmd buat liat semua yang bisa gue bantu.)",
+    "\n💡 Balesan otomatis. Matiin: !senyap. Fitur lain: !cmd",
+    "\n💡 Ini auto-reply. Ga mau lagi? !senyap. Liat fitur: !cmd",
+    "\n💡 Otomatis nih. !senyap buat stop. !cmd buat liat lainnya",
 ]
 
 
