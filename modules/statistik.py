@@ -61,14 +61,16 @@ def _fetch_registry_fresh():
     for row in csv.DictReader(io.StringIO(raw)):
         node_id = (row.get("ID Node") or "").strip().upper()
         city = (row.get("Kota Domisli Pendaftaran") or "").strip()
+        name = (row.get("Nama Asli Lengkap") or "").strip()
         if node_id:
-            registry[node_id] = city
+            registry[node_id] = {"city": city, "name": name}
     return registry
 
 
 def _get_registry():
-    """Returns {ID_NODE: city}. Disk-cached 6h; falls back to a stale cache
-    on fetch failure rather than showing no registry data at all."""
+    """Returns {ID_NODE: {"city":..., "name":...}}. Disk-cached 6h; falls
+    back to a stale cache on fetch failure rather than showing no registry
+    data at all."""
     global _cache_data, _cache_time
     now = time.time()
 
@@ -93,15 +95,18 @@ def _get_registry():
         return {}
 
 
-def get_statistik(nodes):
+def get_statistik(nodes, caller_num=None):
     """nodes: list of raw node dicts from an already-open interface.nodes
     (e.g. list(interfaceN.nodes.values())) — this module never connects on
-    its own."""
+    its own. caller_num: the requesting node's numeric id (message_from_id),
+    used only to look up their own registered name for a personal greeting —
+    not required for the aggregate stats."""
     if not nodes:
         return "❌ Data node tidak tersedia saat ini."
 
     hw_counter = collections.Counter()
     shorts = []
+    caller_short = None
 
     for n in nodes:
         user = n.get("user", {})
@@ -109,18 +114,28 @@ def get_statistik(nodes):
         short = (user.get("shortName") or "").strip().upper()
         if short:
             shorts.append(short)
+        if caller_num is not None and n.get("num") == caller_num:
+            caller_short = short
 
     total = len(nodes)
     registry = _get_registry()
     matched_cities = collections.Counter()
     matched = 0
     for s in shorts:
-        if s in registry:
+        entry = registry.get(s)
+        if entry:
             matched += 1
-            if registry[s]:
-                matched_cities[registry[s]] += 1
+            if entry.get("city"):
+                matched_cities[entry["city"]] += 1
 
-    lines = [f"📊 Statistik Mesh — {total} node dikenal", ""]
+    lines = []
+    caller_entry = registry.get(caller_short) if caller_short else None
+    if caller_entry and caller_entry.get("name"):
+        lines.append(f"👋 Halo {caller_entry['name']} ({caller_short})! Node kamu terdaftar.")
+        lines.append("")
+
+    lines.append(f"📊 Statistik Mesh — {total} node dikenal")
+    lines.append("")
 
     lines.append("🔧 Hardware teratas:")
     for hw, cnt in hw_counter.most_common(6):

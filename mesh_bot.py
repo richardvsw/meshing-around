@@ -184,7 +184,8 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "p3k":       lambda: get_p3k(message),
     "survival":  lambda: get_survival(message),
     "stat":      lambda: get_statistik(list(globals().get(f'interface{deviceID}').nodes.values())
-                                        if globals().get(f'interface{deviceID}') else []),
+                                        if globals().get(f'interface{deviceID}') else [],
+                                        caller_num=message_from_id),
     "darurat":   lambda: get_darurat_with_location(message_from_id, deviceID, message),
     "pesawat":   lambda: get_pesawat_with_location(message_from_id, deviceID, message),
     "banjir":    lambda: get_banjir_with_location(message_from_id, deviceID, message),
