@@ -27,8 +27,13 @@ sys.path.insert(0, "/opt/meshing-around")
 WIB = timezone(timedelta(hours=7))
 CACHE_FILE = "/opt/meshing-around/data/longfast_hourly_summary.json"
 FEED_URL = "http://localhost:8080/api/channels/LongFast/messages"
-MIN_MESSAGES = 3   # skip the LLM call if LongFast has been too quiet to summarize meaningfully
-MAX_HISTORY = 48   # ~2 days of hourly entries
+MIN_MESSAGES = 3    # skip the LLM call if LongFast has been too quiet to summarize meaningfully
+# Hard safety ceiling only — actual retention is the user-configurable
+# longfast_days setting on rivbot-ui's Retention page (routes/retention.py
+# there prunes this file by age). This just stops unbounded growth if that
+# pruning ever fails to run; ~35 days of hourly entries is comfortably
+# above any sane retention setting.
+MAX_HISTORY = 24 * 35
 
 
 def _load_history():
