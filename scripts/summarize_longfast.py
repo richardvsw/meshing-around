@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Hourly-rolling LongFast chat summary, feeding !ringkasan's 'obrolan'
-section (see modules/ringkasan.py).
+"""Hourly LongFast chat summary, feeding !ringkasan's 'obrolan' section
+(see modules/ringkasan.py) and the Stats page's LongFast history card.
 
-Run via a systemd timer every 15 minutes (see summarize-longfast.timer).
-Always summarizes from the top of the CURRENT hour to now, so the cached
-summary is naturally labeled "sejak jam HH:00" and resets each time the
-hour changes — no separate reset logic needed, the window start just
-recomputes every run.
+Run via a systemd timer every 15 minutes (see summarize-longfast.timer),
+but each COMPLETED hour is only ever summarized once: an entry labeled
+"22:00" covers the full 21:00–22:00 window (message range), generated
+shortly after 22:00 ticks over. The 15-min cadence is just how often we
+check "has the hour that just ended been summarized yet" — not how often
+a given hour gets re-summarized.
 
 Reads the transcript from rivbot-ui's existing /api/channels/LongFast/
 messages endpoint (mqtt_tap.py already decrypts and logs all LongFast
@@ -30,54 +31,65 @@ MIN_MESSAGES = 3   # skip the LLM call if LongFast has been too quiet to summari
 MAX_HISTORY = 48   # ~2 days of hourly entries
 
 
-def _write_cache(date_label, hour_label, summary, message_count):
-    os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+def _load_history():
     try:
         with open(CACHE_FILE) as f:
-            history = json.load(f).get("history", [])
+            return json.load(f).get("history", [])
     except Exception:
-        history = []
+        return []
 
-    entry = {
-        "date": date_label,
-        "hour_label": hour_label,
-        "summary": summary,
-        "message_count": message_count,
-        "generated_at": int(time.time()),
-    }
-    # This hour gets re-run every 15 min while it's in progress — replace
-    # its existing entry instead of appending duplicates. Keyed on
-    # (date, hour_label), not hour_label alone, so "22:00" from yesterday
-    # doesn't collide with today's.
-    history = [h for h in history if (h.get("date"), h.get("hour_label")) != (date_label, hour_label)]
+
+def _write_cache(history, entry):
+    # Replace any existing entry for this (date, hour_label) rather than
+    # appending a duplicate — shouldn't normally happen since main() skips
+    # already-summarized hours, but keeps this function safe to call twice.
+    key = (entry["date"], entry["hour_label"])
+    history = [h for h in history if (h.get("date"), h.get("hour_label")) != key]
     history.insert(0, entry)
     history = history[:MAX_HISTORY]
 
+    os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
     with open(CACHE_FILE, "w") as f:
         json.dump({"history": history}, f)
 
 
 def main():
     now = datetime.now(WIB)
-    hour_start = now.replace(minute=0, second=0, microsecond=0)
-    hour_start_ts = int(hour_start.timestamp())
-    date_label = hour_start.strftime("%Y-%m-%d")
-    hour_label = hour_start.strftime("%H:%M")
+    # "22:00" means the hour that ENDED at 22:00, i.e. the 21:00–22:00
+    # window — the top of the current hour is the boundary, not the start
+    # of an in-progress window.
+    hour_end = now.replace(minute=0, second=0, microsecond=0)
+    hour_start = hour_end - timedelta(hours=1)
+    date_label = hour_end.strftime("%Y-%m-%d")
+    hour_label = hour_end.strftime("%H:%M")
+    range_label = f"{hour_start.strftime('%H:%M')}–{hour_label}"
+
+    history = _load_history()
+    if any((h.get("date"), h.get("hour_label")) == (date_label, hour_label) for h in history):
+        print(f"{hour_label} already summarized, skipping")
+        return
 
     try:
-        with urllib.request.urlopen(f"{FEED_URL}?since={hour_start_ts}", timeout=15) as r:
+        since_ts = int(hour_start.timestamp())
+        with urllib.request.urlopen(f"{FEED_URL}?since={since_ts}", timeout=15) as r:
             data = json.load(r)
     except Exception as e:
         print(f"fetch error: {e}")
         return
 
-    # Only count messages FROM other nodes — skip the bot's own broadcasts
-    # so the summary reflects what the community said, not the bot's MOTD.
-    msgs = [m for m in data.get("messages", []) if m.get("direction") == "in"]
+    until_ts = int(hour_end.timestamp())
+    # Only count messages FROM other nodes (skip the bot's own broadcasts)
+    # and strictly within this completed hour — the feed endpoint only
+    # takes a lower bound, so the upper bound is filtered here.
+    msgs = [m for m in data.get("messages", [])
+            if m.get("direction") == "in" and m.get("ts", 0) < until_ts]
 
     if len(msgs) < MIN_MESSAGES:
-        _write_cache(date_label, hour_label, None, len(msgs))
-        print(f"Too quiet ({len(msgs)} msgs since {hour_label}) — wrote empty cache")
+        _write_cache(history, {
+            "date": date_label, "hour_label": hour_label, "range_label": range_label,
+            "summary": None, "message_count": len(msgs), "generated_at": int(time.time()),
+        })
+        print(f"Too quiet ({len(msgs)} msgs, {range_label}) — wrote empty cache")
         return
 
     transcript = "\n".join(f"{m['from_name']}: {m['text']}" for m in msgs)
@@ -97,8 +109,11 @@ def main():
         f"{transcript}"
     )
     summary = send_openwebui_query(prompt, max_tokens=150)
-    _write_cache(date_label, hour_label, summary, len(msgs))
-    print(f"Wrote summary for {hour_label}: {len(msgs)} messages")
+    _write_cache(history, {
+        "date": date_label, "hour_label": hour_label, "range_label": range_label,
+        "summary": summary, "message_count": len(msgs), "generated_at": int(time.time()),
+    })
+    print(f"Wrote summary for {range_label}: {len(msgs)} messages")
 
 
 if __name__ == "__main__":
