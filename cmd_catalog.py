@@ -19,6 +19,8 @@ CMDS = [
     ("!alarm HH:MM", "Set alarm, bot DM sampai kamu balas"),
     ("!morse",       "Encode/decode kode morse"),
     ("!ketinggian",    "Estimasi ketinggian dari panjang bayangan ⛰️"),
+    ("!diamtest",    "Matikan balasan otomatis bot kalau kamu ketik \"Test\" di channel"),
+    ("!aktiftest",   "Nyalakan lagi balasan otomatis \"Test\" (kebalikan !diamtest)"),
     # Astronomi
     ("!matahari",      "Terbit & terbenam + sisa siang hari ini 🌅"),
     ("!bulan",         "Fase bulan malam ini + countdown purnama 🌙"),
@@ -28,7 +30,7 @@ CMDS = [
     ("!dimana",        "Di mana kamu? Bot balas + link Google Maps 📍"),
     ("!daftar",        "Siapa aja yang terdengar di mesh sekarang? 📡"),
     ("!peringkat",     "Node paling jauh, paling aktif — cek ranking 🏆"),
-    ("!stat",          "Statistik mesh: sebaran hardware, role, PKI & node terdaftar 📊"),
+    ("!stat",          "Statistik mesh: sebaran hardware & node terdaftar 📊"),
     ("!pesan",         "Motivasi & salam harian dari bot 💬"),
     # AI & pencarian
     ("!tanya <teks>",  "Tanya AI apa aja, dijawab via DM 🤖"),
@@ -51,7 +53,7 @@ CATEGORIES = [
     ("📊", ["ringkasan", "ping"]),
     ("🌤",  ["cuaca", "bencana", "berita", "libur"]),
     ("💰", ["hargabbm", "kursrupiah"]),
-    ("🧭", ["konversi", "jarak", "alarm", "morse", "ketinggian"]),
+    ("🧭", ["konversi", "jarak", "alarm", "morse", "ketinggian", "diamtest", "aktiftest"]),
     ("🌌", ["matahari", "bulan", "surya"]),
     ("👥", ["siapa", "dimana", "daftar", "peringkat", "stat", "pesan"]),
     ("🤖", ["tanya", "wiki"]),
@@ -126,10 +128,12 @@ def _mock_location():
 # node population — same single-client-TCP problem), !jarak (needs a
 # *previous* stored location to diff against —
 # meaningless as a single stateless simulator call), !alarm (schedules a
-# real future DM — a side effect, not a dry-run), !tanya (LLM call routed
-# through the live bot's DM plumbing), !berita (rss.py's api_throttle import
-# chain), !matahari/!surya (need the `ephem` package — installed in the
-# bot's own venv but out of scope to add here for a solar-position calc).
+# real future DM — a side effect, not a dry-run), !diamtest/!aktiftest
+# (mutate persisted per-node opt-out state — a side effect, not a dry-run),
+# !tanya (LLM call routed through the live bot's DM plumbing), !berita
+# (rss.py's api_throttle import chain), !matahari/!surya (need the `ephem`
+# package — installed in the bot's own venv but out of scope to add here
+# for a solar-position calc).
 SIMULATABLE = {
     "fifa2026", "konversi", "kursrupiah", "morse", "p3k", "survival", "libur", "gunung",
     "cari", "wiki", "ringkasan", "cuaca", "hargabbm", "dimana", "pesan",

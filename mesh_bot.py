@@ -13,6 +13,7 @@ import random
 from datetime import datetime
 from modules.log import logger, CustomFormatter, msgLogger, getPrettyTime
 import modules.settings as my_settings
+import modules.magicword_pref as magicword_pref
 from modules.system import *
 _seen_packet_ids = {}  # packet_id -> timestamp, for dedup
 
@@ -186,6 +187,10 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "stat":      lambda: get_statistik(list(globals().get(f'interface{deviceID}').nodes.values())
                                         if globals().get(f'interface{deviceID}') else [],
                                         caller_num=message_from_id),
+    "diamtest":  lambda: (magicword_pref.opt_out(message_from_id) or
+                          "🔇 Oke, gue diemin balesan otomatis buat kata \"Test\" di channel. Mau nyalain lagi? Ketik !aktiftest."),
+    "aktiftest": lambda: (magicword_pref.opt_in(message_from_id) or
+                          "🔊 Oke, balesan otomatis buat kata \"Test\" di channel gue nyalain lagi."),
     "darurat":   lambda: get_darurat_with_location(message_from_id, deviceID, message),
     "pesawat":   lambda: get_pesawat_with_location(message_from_id, deviceID, message),
     "banjir":    lambda: get_banjir_with_location(message_from_id, deviceID, message),
@@ -2478,7 +2483,10 @@ def onReceive(packet, interface):
                 # requirement below, but ONLY for this literal match, not any
                 # bang-less message. "test 123" or "let's test this" do NOT
                 # match; only the message being precisely "Test" or "test".
-                is_bare_test_ping = message_string.strip() in ("Test", "test")
+                # Per-node opt-out via !diamtest/!aktiftest — an opted-out node
+                # is treated exactly as if this weren't a magic word at all.
+                is_bare_test_ping = (message_string.strip() in ("Test", "test")
+                                     and not magicword_pref.is_opted_out(message_from_id))
                 if messageTrap(message_string) or is_bare_test_ping:
                     # message is for us to respond to, or is it...
                     if my_settings.ignoreDefaultChannel and channel_number == my_settings.publicChannel:
@@ -2493,20 +2501,24 @@ def onReceive(packet, interface):
                         # message is for bot to respond to, seriously this time..
                         logger.info(f"Device:{rxNode} Channel:{channel_number} " + CustomFormatter.green + "ReceivedChannel: " + CustomFormatter.white + f"{message_log_string} " + CustomFormatter.purple +\
                                     "From: " + CustomFormatter.white + f"{get_name_from_number(message_from_id, 'long', rxNode)}")
+                        channel_reply = auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM)
+                        if is_bare_test_ping and not magicword_pref.was_notified(message_from_id):
+                            channel_reply += random.choice(magicword_pref.NOTICE_TEMPLATES)
+                            magicword_pref.mark_notified(message_from_id)
                         if my_settings.useDMForResponse:
                             # respond to channel message via direct message (no reply_id — avoids threading back into LongFast)
-                            send_message(auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM), channel_number, message_from_id, rxNode)
+                            send_message(channel_reply, channel_number, message_from_id, rxNode)
                         else:
                             # or respond to channel message on the channel itself
                             if channel_number == my_settings.publicChannel and my_settings.antiSpam:
                                 # warning user spamming default channel
                                 logger.warning(f"System: AntiSpam protection, sending DM to: {get_name_from_number(message_from_id, 'long', rxNode)}")
-                            
+
                                 # respond to channel message via direct message
-                                send_message(auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM), channel_number, message_from_id, rxNode, reply_id=packet_id)
+                                send_message(channel_reply, channel_number, message_from_id, rxNode, reply_id=packet_id)
                             else:
                                 # respond to channel message on the channel itself
-                                send_message(auto_response(message_string, snr, rssi, hop, pkiStatus, message_from_id, channel_number, rxNode, isDM), channel_number, 0, rxNode, reply_id=packet_id)
+                                send_message(channel_reply, channel_number, 0, rxNode, reply_id=packet_id)
 
                 else:
                     # message is not for us to respond to
