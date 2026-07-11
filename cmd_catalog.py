@@ -28,6 +28,7 @@ CMDS = [
     ("!dimana",        "Di mana kamu? Bot balas + link Google Maps 📍"),
     ("!daftar",        "Siapa aja yang terdengar di mesh sekarang? 📡"),
     ("!peringkat",     "Node paling jauh, paling aktif — cek ranking 🏆"),
+    ("!stat",          "Statistik mesh: sebaran hardware, role, PKI & node terdaftar 📊"),
     ("!pesan",         "Motivasi & salam harian dari bot 💬"),
     # AI & pencarian
     ("!tanya <teks>",  "Tanya AI apa aja, dijawab via DM 🤖"),
@@ -52,7 +53,7 @@ CATEGORIES = [
     ("💰", ["hargabbm", "kursrupiah"]),
     ("🧭", ["konversi", "jarak", "alarm", "morse", "ketinggian"]),
     ("🌌", ["matahari", "bulan", "surya"]),
-    ("👥", ["siapa", "dimana", "daftar", "peringkat", "pesan"]),
+    ("👥", ["siapa", "dimana", "daftar", "peringkat", "stat", "pesan"]),
     ("🤖", ["tanya", "wiki"]),
     ("🏥", ["p3k", "survival", "darurat"]),
     ("✈️", ["pesawat"]),
@@ -121,8 +122,9 @@ def _mock_location():
 # the real command would use the caller's GPS.
 #
 # Still excluded: !ping/!siapa (need hop/SNR/RSSI from a real received
-# packet), !daftar/!peringkat (need the live in-memory seenNodes/leaderboard
-# state), !jarak (needs a *previous* stored location to diff against —
+# packet), !daftar/!peringkat/!stat (need the live in-process interface's
+# node population — same single-client-TCP problem), !jarak (needs a
+# *previous* stored location to diff against —
 # meaningless as a single stateless simulator call), !alarm (schedules a
 # real future DM — a side effect, not a dry-run), !tanya (LLM call routed
 # through the live bot's DM plumbing), !berita (rss.py's api_throttle import

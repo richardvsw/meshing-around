@@ -170,13 +170,14 @@ if rssEnable or enable_headlines:
 from modules.bbm import get_bbm_prices
 from modules.kurs import get_kurs_rupiah
 from modules.fifa import get_fifa2026
-trap_list = trap_list + ("hargabbm", "bbmharga", "kursrupiah", "kurs", "fifa2026", "fifa", "gempa", "alarm", "p3k", "survival", "konversi", "morse", "darurat", "pesawat", "banjir", "bencana")
+trap_list = trap_list + ("hargabbm", "bbmharga", "kursrupiah", "kurs", "fifa2026", "fifa", "gempa", "alarm", "p3k", "survival", "stat", "konversi", "morse", "darurat", "pesawat", "banjir", "bencana")
 
 # New commands: gempa, alarm, p3k, konversi, morse
 from modules.gempa import get_gempa
 from modules.alarm import get_alarm, ack_alarm
 from modules.p3k import get_p3k
 from modules.survival import get_survival
+from modules.statistik import get_statistik
 from modules.darurat import get_darurat as _get_darurat_base
 
 def get_darurat_with_location(nodeID, deviceID, message=None):
