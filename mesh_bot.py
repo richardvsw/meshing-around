@@ -188,7 +188,7 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
                                         if globals().get(f'interface{deviceID}') else [],
                                         caller_num=message_from_id),
     "senyap":    lambda: (magicword_pref.opt_out(message_from_id) or
-                          "🔇 Oke, gue diemin semua balesan otomatis buat node kamu. Perintah !command tetap gue jawab kok. Mau nyalain lagi? Ketik !aktif."),
+                          "🔇 Oke, gue diemin semua balesan otomatis buat node kamu. Perintah !cmd tetap gue jawab kok. Mau nyalain lagi? Ketik !aktif."),
     "aktif":     lambda: (magicword_pref.opt_in(message_from_id) or
                           "🔊 Oke, balesan otomatis bot gue nyalain lagi buat node kamu."),
     "darurat":   lambda: get_darurat_with_location(message_from_id, deviceID, message),
@@ -432,12 +432,12 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
     global multiPing
     myNodeNum = globals().get(f'myNodeNum{deviceID}', 777)
     if  "?" in message and isDM:
-        pingHelp = "🤖Ping Command Help:\n" \
-        "🏓 Send 'ping' or 'ack' or 'test' to get a response.\n" \
-        "🏓 Send 'ping <number>' to get multiple pings in DM"
-        "🏓 ping @USERID to send a Joke from the bot"
+        pingHelp = "🤖Bantuan Perintah Ping:\n" \
+        "🏓 Ketik 'ping', 'ack', atau 'test' buat dapet balesan.\n" \
+        "🏓 Ketik 'ping <angka>' buat dapet beberapa ping sekaligus di DM"
+        "🏓 ping @USERID buat kirim Lelucon dari bot"
         return pingHelp
-    
+
     msg = ""
     type = ''
 
@@ -445,19 +445,19 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
         msg = random.choice(["🏓 Nyambung bro!", "🏓 Sinyal ada nih!", "🏓 Waduh, ping-mu nyampe juga ternyata!", "🏓 Hei, masih hidup nih!"])
         type = "🏓PING"
     elif "test" in message.lower() or "testing" in message.lower():
-        msg = random.choice(["🎙Testing 1,2,3", "🎙Testing",\
-                             "🎙Testing, testing",\
-                             "🎙Ah-wun, ah-two...", "🎙Is this thing on?",\
-                             "🎙Roger that!",])
+        msg = random.choice(["🎙Tes, tes, satu dua tiga", "🎙Tes suara nih",\
+                             "🎙Cek sound, cek sound",\
+                             "🎙Halo halo, kedengeran ga?", "🎙Kedengeran jelas nih!",\
+                             "🎙Siap, diterima!",])
         type = "🎙TEST"
     elif "ack" in message.lower():
-        msg = random.choice(["✋ACK-ACK!\n", "✋Ack to you!\n"])
+        msg = random.choice(["✋Siap, diterima!\n", "✋Oke, ACK balik!\n"])
         type = "✋ACK"
     elif "cqcq" in message.lower() or "cq" in message.lower() or "cqcqcq" in message.lower():
         myname = get_name_from_number(myNodeNum, 'short', deviceID)
         msg = f"QSP QSL OM DE  {myname}   K\n"
     else:
-        msg = "🔊 Can you hear me now?"
+        msg = "🔊 Kedengeran ga suara gue?"
 
     # build route display
     sender_name = get_name_from_number(message_from_id, "short", deviceID)
