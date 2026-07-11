@@ -101,16 +101,11 @@ def get_statistik(nodes):
         return "❌ Data node tidak tersedia saat ini."
 
     hw_counter = collections.Counter()
-    role_counter = collections.Counter()
-    pki_count = 0
     shorts = []
 
     for n in nodes:
         user = n.get("user", {})
         hw_counter[user.get("hwModel", "?")] += 1
-        role_counter[user.get("role") or "CLIENT"] += 1
-        if user.get("publicKey"):
-            pki_count += 1
         short = (user.get("shortName") or "").strip().upper()
         if short:
             shorts.append(short)
@@ -130,15 +125,6 @@ def get_statistik(nodes):
     lines.append("🔧 Hardware teratas:")
     for hw, cnt in hw_counter.most_common(6):
         lines.append(f"  {hw}: {cnt}")
-
-    lines.append("")
-    lines.append("👥 Role:")
-    for role, cnt in role_counter.most_common():
-        lines.append(f"  {role}: {cnt}")
-
-    pct_pki = round(pki_count / total * 100) if total else 0
-    lines.append("")
-    lines.append(f"🔐 PKI-capable: {pki_count}/{total} ({pct_pki}%)")
 
     pct_reg = round(matched / total * 100) if total else 0
     lines.append("")
