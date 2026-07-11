@@ -16,7 +16,9 @@ small on a server that otherwise has no image-processing libs at all.
 import base64
 import collections
 import configparser
+import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -27,6 +29,7 @@ from datetime import datetime, timezone, timedelta
 sys.path.insert(0, "/opt/meshing-around")
 
 from PIL import Image, ImageDraw, ImageFont
+import staticmap
 
 WIB = timezone(timedelta(hours=7))
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
@@ -37,18 +40,107 @@ _DEVICE_HW_URL = "https://api.meshtastic.org/resource/deviceHardware"
 _DEVICE_HW_CACHE = "/opt/meshing-around/data/device_hardware.json"
 _DEVICE_HW_TTL = 7 * 86400  # this list changes rarely — new hardware releases, not daily
 
-# Real Indonesia province boundaries (public domain, BAKOSURTANAL-sourced via
-# github.com/superpikar/indonesia-geojson) — fetched once, vendored locally.
-# NOT regenerated from a live URL on every run: this is static geography,
-# no reason to refetch it.
-_GEOJSON_PATH = "/opt/meshing-around/data/indonesia_provinces.geojson"
-
 # City name -> (lat, lon), geocoded once via Nominatim (same free/no-key
 # service !hargabbm and !dimana already use elsewhere in this project) and
 # cached indefinitely — city centroids don't move.
 _CITY_COORDS_CACHE = "/opt/meshing-around/data/city_coords.json"
 _ICON_DIR = "/opt/meshing-around/data/device_icons"
 _ICON_SIZE = 34
+
+# ── OpenStreetMap basemap tiles ─────────────────────────────────────────────
+# Real street/place-name tiles instead of a hand-drawn map. OSM's tile usage
+# policy (operations.osmfoundation.org/policies/tiles/) requires a real
+# identifying User-Agent and, importantly, caching — this script only ever
+# needs a small, near-fixed set of tiles (fixed national view + one zoom
+# level per requester city), so a permanent disk cache keeps repeat !stat
+# calls from re-fetching anything at all.
+_OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+_OSM_USER_AGENT = "RiV-Bot-StatImage/1.0 (Meshtastic community bot; contact via github.com/richardvsw/meshing-around)"
+_TILE_CACHE_DIR = "/opt/meshing-around/data/osm_tiles"
+_OSM_ATTRIBUTION = "© OpenStreetMap contributors"
+
+
+class _CachedStaticMap(staticmap.StaticMap):
+    """Disk-caches every tile fetch, forever — tiles for a fixed view (the
+    national map) or a city centroid (zoom insets) don't go stale on any
+    timescale that matters here, and this is what makes repeat !stat runs
+    not hammer OSM's tile servers at all."""
+
+    def get(self, url, **kwargs):
+        os.makedirs(_TILE_CACHE_DIR, exist_ok=True)
+        key = hashlib.sha1(url.encode()).hexdigest()
+        path = f"{_TILE_CACHE_DIR}/{key}.png"
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                return 200, f.read()
+        status, content = super().get(url, **kwargs)
+        if status == 200:
+            with open(path, "wb") as f:
+                f.write(content)
+        return status, content
+
+
+def _mercator_xy(lon, lat, zoom, tile_size=256):
+    lat_rad = math.radians(max(min(lat, 85.05), -85.05))  # web mercator's own valid range
+    n = 2 ** zoom
+    x = (lon + 180) / 360 * n * tile_size
+    y = (1 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2 * n * tile_size
+    return x, y
+
+
+def _fit_osm_view(lon_min, lon_max, lat_min, lat_max, w, h, pad=0.15, max_zoom=17, axis="both"):
+    """Picks the highest OSM zoom level at which the padded bbox still fits
+    within a w x h box, plus a projector matching what StaticMap.render()
+    produces for that (zoom, center) — so pins/labels line up with the
+    fetched tile image without needing staticmap's own marker drawing.
+
+    axis="both" requires both dimensions to fit (safe default — nothing
+    gets cropped off). axis="width" only requires the width to fit and
+    lets the taller dimension overflow (extra context above/below, never
+    cropped since render() always fills the box) — for a bbox whose aspect
+    ratio is far more extreme than the panel's own (Indonesia is ~2.7:1;
+    a national-map panel is usually squarer), "both" tends to drop a whole
+    zoom level early and leave a lot of unused margin on the tighter axis."""
+    lon_span, lat_span = lon_max - lon_min, lat_max - lat_min
+    lon_min -= lon_span * pad
+    lon_max += lon_span * pad
+    lat_min -= lat_span * pad
+    lat_max += lat_span * pad
+    center_lon, center_lat = (lon_min + lon_max) / 2, (lat_min + lat_max) / 2
+
+    zoom = 0
+    for z in range(max_zoom, -1, -1):
+        x0, y0 = _mercator_xy(lon_min, lat_max, z)
+        x1, y1 = _mercator_xy(lon_max, lat_min, z)
+        fits_w = abs(x1 - x0) <= w
+        fits_h = abs(y1 - y0) <= h
+        if fits_w and (axis == "width" or fits_h):
+            zoom = z
+            break
+
+    cx, cy = _mercator_xy(center_lon, center_lat, zoom)
+
+    def project(lat, lon):
+        x, y = _mercator_xy(lon, lat, zoom)
+        return w / 2 + (x - cx), h / 2 + (y - cy)
+
+    return zoom, center_lon, center_lat, project
+
+
+def _render_osm_basemap(w, h, lon_min, lon_max, lat_min, lat_max, pad=0.15, axis="both"):
+    """Returns (RGB tile image sized exactly w x h, project fn) for the
+    given bbox, or (None, None) on any fetch failure — callers fall back to
+    a plain water-colored panel rather than crashing the whole render."""
+    zoom, center_lon, center_lat, project = _fit_osm_view(lon_min, lon_max, lat_min, lat_max, w, h, pad, axis=axis)
+    try:
+        m = _CachedStaticMap(w, h, url_template=_OSM_TILE_URL,
+                              headers={"User-Agent": _OSM_USER_AGENT},
+                              tile_request_timeout=15)
+        tile_img = m.render(zoom=zoom, center=(center_lon, center_lat)).convert("RGB")
+        return tile_img, project
+    except Exception as e:
+        print(f"OSM tile fetch failed: {e}")
+        return None, project
 
 
 def _get_device_hardware():
@@ -157,18 +249,30 @@ ACCENT_DK = (42, 143, 116)
 W, H = 1220, 1800  # upper bound only — final image is always cropped to actual content height
 SIDEBAR_W = 340  # right column: personal zoom-inset panel
 
-# ── map palette — "night mode Maps" (like Google/Apple Maps' dark theme):
-# dark navy sea, a slightly lighter dark land tone, muted border lines,
-# light labels with a dark halo — tinted to the dashboard's own teal so it
-# sits naturally in the dark dashboard instead of a bright light-mode panel. ─
-MAP_WATER  = (12, 20, 27)     # deep navy sea
-MAP_LAND   = (26, 38, 43)     # muted dark teal-green land, distinct from sea
-MAP_BORDER = (52, 70, 68)     # province boundary lines
-MAP_LABEL  = (205, 216, 212)  # light label text
-MAP_HALO   = (8, 13, 17)      # dark halo for legibility over polygons/water
-PIN_FILL   = ACCENT
-PIN_OTHER  = (227, 179, 65)   # nearby-node pins (distinct from the requester's own ACCENT pin)
+# ── map styling — real OSM tiles (their own light basemap colors), so labels
+# drawn on top need dark text + a light halo for legibility, the opposite of
+# the old hand-drawn dark map. MAP_WATER is only used as a placeholder fill
+# while a tile is loading / if a fetch fails. ───────────────────────────────
+MAP_WATER  = (170, 211, 223)  # OSM's own default sea color, as a fallback fill
+MAP_LABEL  = (40, 40, 40)     # dark label text, reads well over OSM tiles
+MAP_HALO   = (255, 255, 255)  # light halo for legibility over roads/land
+PIN_OTHER  = (227, 179, 65)   # nearby-node pins in the zoom inset (distinct from the requester's own pin)
+PIN_UNKNOWN = (150, 155, 158)  # neutral gray for the "no location" slice of the coverage card
 PIN_HEAD_R = 9  # teardrop head radius, px
+
+# ── position sources — every plotted node is tagged with where its
+# coordinates actually came from, so the legend/coverage card can show that
+# breakdown honestly instead of lumping "real GPS from someone else's
+# session" in with "our own live session" under one generic "GPS asli". ────
+SRC_OWN      = "own"       # live from our own mqtt_tap session (/api/nodes)
+SRC_MESHNODE = "meshnode"  # map.meshnode.id's public community map report
+SRC_CITY     = "city"      # registry city centroid, geocoded — least precise
+
+SRC_COLOR = {SRC_OWN: ACCENT, SRC_MESHNODE: (86, 149, 227), SRC_CITY: ACCENT_DK}
+SRC_RADIUS = {SRC_OWN: 9, SRC_MESHNODE: 8, SRC_CITY: 6}
+SRC_LABEL = {SRC_OWN: "GPS langsung (RiV-Bot)", SRC_MESHNODE: "map.meshnode.id",
+             SRC_CITY: "perkiraan dari kota terdaftar"}
+PIN_FILL = SRC_COLOR[SRC_OWN]  # kept for the zoom inset's own-node pin
 
 
 def font(size, bold=False):
@@ -192,15 +296,6 @@ def stat_card(draw, x, y, w, h, label, value, value_color=TEXT):
     draw.text((x + 20, y + 44), value, font=f_value, fill=value_color)
 
 
-def _load_provinces():
-    try:
-        with open(_GEOJSON_PATH) as f:
-            return json.load(f).get("features", [])
-    except Exception as e:
-        print(f"provinces geojson load failed: {e}")
-        return []
-
-
 def _halo_text(d, xy, text, f, fill=MAP_LABEL, halo=MAP_HALO, anchor=None):
     """Text with a soft outline so labels stay legible sitting on top of
     polygons/water rather than a solid label chip — how Maps-style labels
@@ -220,26 +315,52 @@ def _draw_pin(d, px, py, r=PIN_HEAD_R, fill=PIN_FILL):
     d.ellipse((px - r * 0.42, py - r * 1.9, px + r * 0.42, py - r * 1.1), fill=(255, 255, 255))
 
 
-def _province_centroid(feat, project):
-    """Rough polygon centroid (vertex average of the exterior ring, not
-    area-weighted) — good enough to place a label roughly inside a
-    province at this map scale, no need for a real centroid algorithm."""
-    geom = feat.get("geometry", {})
-    polys = geom.get("coordinates", [])
-    if geom.get("type") == "Polygon":
-        polys = [polys]
-    # Label on the largest ring (by vertex count) if a province is a
-    # multi-polygon (e.g. archipelagos) — avoids labeling a tiny outlying
-    # island instead of the main landmass.
-    ring = max((poly[0] for poly in polys if poly), key=len, default=None)
-    if not ring:
-        return None
-    xs, ys = [], []
-    for lon, lat in ring:
-        x, y = project(lat, lon)
-        xs.append(x)
-        ys.append(y)
-    return sum(xs) / len(xs), sum(ys) / len(ys)
+def _draw_coverage_card(sd, cx, cy, own_count, meshnode_count, city_count, unknown_count):
+    """Floating white info-card (like a real Maps popup) with a small donut
+    chart, in a corner of the map — turns the empty-ocean space into a
+    stand-in for the nodes with no location, instead of the caption text
+    below the map being the only place that's mentioned at all. Shows all
+    four position sources (own live session / map.meshnode.id / city
+    estimate / unknown) so it doubles as a "where did this data come from"
+    legend, not just a coverage percentage."""
+    total = own_count + meshnode_count + city_count + unknown_count
+    if total == 0:
+        return
+
+    card_w, card_h = 196, 140
+    x0, y0 = cx, cy
+    x1, y1 = x0 + card_w, y0 + card_h
+    d = sd
+    d.rounded_rectangle((x0, y0, x1, y1), radius=10, fill=(255, 255, 255),
+                         outline=(210, 213, 216), width=1)
+
+    d.text((x0 + 14, y0 + 12), "Sumber Lokasi", font=font(12, bold=True), fill=(40, 40, 40))
+
+    r = 30
+    dcx, dcy = x0 + 14 + r, y0 + 32 + r
+    start = -90
+    for count, color in ((own_count, SRC_COLOR[SRC_OWN]), (meshnode_count, SRC_COLOR[SRC_MESHNODE]),
+                          (city_count, SRC_COLOR[SRC_CITY]), (unknown_count, PIN_UNKNOWN)):
+        if count <= 0:
+            continue
+        sweep = 360 * count / total
+        d.pieslice((dcx - r, dcy - r, dcx + r, dcy + r), start, start + sweep, fill=color)
+        start += sweep
+    # punch the donut hole
+    hole_r = r * 0.55
+    d.ellipse((dcx - hole_r, dcy - hole_r, dcx + hole_r, dcy + hole_r), fill=(255, 255, 255))
+    d.text((dcx, dcy), f"{total}", font=font(13, bold=True), fill=(40, 40, 40), anchor="mm")
+
+    rows = [("RiV-Bot", own_count, SRC_COLOR[SRC_OWN]),
+            ("meshnode.id", meshnode_count, SRC_COLOR[SRC_MESHNODE]),
+            ("Perkiraan kota", city_count, SRC_COLOR[SRC_CITY]),
+            ("Tanpa lokasi", unknown_count, PIN_UNKNOWN)]
+    ly = y0 + 38
+    lx = dcx + r + 14
+    for label, count, color in rows:
+        d.ellipse((lx, ly + 3, lx + 8, ly + 11), fill=color)
+        d.text((lx + 13, ly), f"{label} ({count})", font=font(10), fill=(60, 60, 60))
+        ly += 17
 
 
 def _load_city_coords_cache():
@@ -284,20 +405,53 @@ def _geocode_city(city, cache):
     return result
 
 
+_MESHNODE_MAP_URL = "https://map.meshnode.id/api/nodes/map"
+
+
+def _get_meshnode_positions():
+    """Real GPS for nodes our own mqtt_tap session hasn't heard fresh
+    lat/lon from directly, sourced from map.meshnode.id's public node-map
+    API — the community's shared MQTT broker (mqtt.meshnode.id, same one
+    RiV-Bot itself listens on) where devices self-publish a Meshtastic
+    "map report" containing their GPS position. This is genuine reported
+    GPS, not a guess, and covers ~85% of what our own session shows as
+    "no location" — some other client on the same broker simply heard that
+    node's map report more recently than we did. No API key; public JSON.
+    Best-effort: an empty dict on any failure just falls back to the
+    existing city-centroid tier, same as before this existed."""
+    try:
+        raw = json.load(urllib.request.urlopen(_MESHNODE_MAP_URL, timeout=15))
+        out = {}
+        for meta in raw.values():
+            short = (meta.get("shortName") or "").strip().upper()
+            lat, lon = meta.get("latitude"), meta.get("longitude")
+            # coords are int, scaled by 1e7 (Meshtastic's own wire format)
+            if short and lat and lon:
+                out[short] = (lat / 1e7, lon / 1e7)
+        return out
+    except Exception as e:
+        print(f"map.meshnode.id fetch failed: {e}")
+        return {}
+
+
 def _fallback_positions(nodes, registry):
-    """For nodes with no live GPS but a registered short name that has a
-    city on file, approximate their position as that city's centroid.
-    Returns [(node, lat, lon, is_approx), ...] — is_approx distinguishes
-    these from real GPS fixes so the map can render them differently
-    (smaller/dimmer, not claiming precision the data doesn't have)."""
+    """Three-tier position lookup, each node tagged with SRC_OWN / SRC_MESHNODE
+    / SRC_CITY so the map can show — and the legend can honestly label —
+    exactly where each pin's coordinates came from. Returns [(node, lat,
+    lon, source), ...]."""
+    meshnode_positions = _get_meshnode_positions()
     cache = _load_city_coords_cache()
     dirty = False
     out = []
     for n in nodes:
         if n.get("lat") and n.get("lon"):
-            out.append((n, n["lat"], n["lon"], False))
+            out.append((n, n["lat"], n["lon"], SRC_OWN))
             continue
         short = (n.get("short") or "").strip().upper()
+        mn_pos = meshnode_positions.get(short)
+        if mn_pos:
+            out.append((n, mn_pos[0], mn_pos[1], SRC_MESHNODE))
+            continue
         entry = registry.get(short)
         city = entry.get("city") if entry else None
         if not city:
@@ -307,46 +461,10 @@ def _fallback_positions(nodes, registry):
         if not before:
             dirty = True
         if coord:
-            out.append((n, coord[0], coord[1], True))
+            out.append((n, coord[0], coord[1], SRC_CITY))
     if dirty:
         _save_city_coords_cache(cache)
     return out
-
-
-def _make_projector(lon_min, lon_max, lat_min, lat_max, px_x0, px_y0, px_x1, px_y1, pad=0.04):
-    """Equirectangular lat/lon -> pixel, fit-within (preserves aspect ratio,
-    letterboxed within the box) rather than stretch-to-fill — otherwise
-    Indonesia's real shape gets visibly distorted. `pad` adds a geo margin
-    so coastline provinces don't touch the panel edge."""
-    lon_span = lon_max - lon_min
-    lat_span = lat_max - lat_min
-    lon_min -= lon_span * pad
-    lon_max += lon_span * pad
-    lat_min -= lat_span * pad
-    lat_max += lat_span * pad
-    lon_span = lon_max - lon_min
-    lat_span = lat_max - lat_min
-
-    # cos(mean latitude) correction — near the equator this is close to 1,
-    # but Indonesia spans far enough south (to -11°) that skipping it would
-    # visibly stretch the map east-west.
-    import math
-    mean_lat_rad = math.radians((lat_min + lat_max) / 2)
-    geo_w = lon_span * math.cos(mean_lat_rad)
-    geo_h = lat_span
-
-    box_w, box_h = px_x1 - px_x0, px_y1 - px_y0
-    scale = min(box_w / geo_w, box_h / geo_h)
-    used_w, used_h = geo_w * scale, geo_h * scale
-    off_x = px_x0 + (box_w - used_w) / 2
-    off_y = px_y0 + (box_h - used_h) / 2
-
-    def project(lat, lon):
-        x = off_x + (lon - lon_min) * math.cos(mean_lat_rad) * scale
-        y = off_y + (lat_max - lat) * scale  # image y grows downward, lat grows upward
-        return x, y
-
-    return project
 
 
 def _haversine_km(lat1, lon1, lat2, lon2):
@@ -366,9 +484,9 @@ def _find_requester_position(requester_short, positions):
     if not requester_short:
         return None
     requester_short = requester_short.strip().upper()
-    for n, lat, lon, is_approx in positions:
+    for n, lat, lon, source in positions:
         if (n.get("short") or "").strip().upper() == requester_short:
-            return (n, lat, lon, is_approx)
+            return (n, lat, lon, source)
     return None
 
 
@@ -396,58 +514,50 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
             d.text((map_x0 + 16, map_y0 + 20 + i * 20), line, font=font(13), fill=MAP_LABEL)
         return
 
-    n, lat, lon, is_approx = requester_pos
+    n, lat, lon, source = requester_pos
     short = (n.get("short") or "?").strip()
 
     # ── find nearby nodes (real distance, not just "inside the same pixel
-    # box") so the nearest-node figure and the list are both trustworthy ──
+    # box") so the nearest-node figure and the list are both trustworthy.
+    # Skip pairs where BOTH points are city-fallback positions that landed
+    # on the exact same geocoded centroid — that's two nodes registered to
+    # the same city, not two nodes verified to be near each other, and
+    # reporting it as "0.0 km" claims a precision the data doesn't have. A
+    # requester-vs-real-GPS comparison (or two DIFFERENT city centroids) is
+    # still shown, since that distance is meaningful even if approximate. ──
     nearby = []
-    for other_n, olat, olon, oapprox in positions:
+    for other_n, olat, olon, osource in positions:
         if other_n is n:
+            continue
+        same_fallback_city = (source == SRC_CITY and osource == SRC_CITY
+                               and abs(olat - lat) < 1e-6 and abs(olon - lon) < 1e-6)
+        if same_fallback_city:
             continue
         dist = _haversine_km(lat, lon, olat, olon)
         if dist <= NEARBY_RADIUS_KM:
-            nearby.append((other_n, olat, olon, oapprox, dist))
+            nearby.append((other_n, olat, olon, osource, dist))
     nearby.sort(key=lambda t: t[4])
+    same_city_count = sum(
+        1 for other_n, olat, olon, osource in positions
+        if other_n is not n and source == SRC_CITY and osource == SRC_CITY
+        and abs(olat - lat) < 1e-6 and abs(olon - lon) < 1e-6
+    )
 
     # Bottom info block needs room for: own node (name/city/coords/hw) +
-    # nearest-node line + a short neighbor list — taller than a plain tag.
-    info_h = 118 + 20 + min(len(nearby), NEARBY_LIST_MAX) * 17
+    # nearest-node line + a short neighbor list + the same-city caveat line.
+    info_h = 118 + 20 + min(len(nearby), NEARBY_LIST_MAX) * 17 + (17 if same_city_count else 0)
     map_x0, map_y0 = x + 16, y + 50
     map_x1, map_y1 = x + w - 16, y + h - 16 - info_h
     rounded(d, (map_x0, map_y0, map_x1, map_y1), 8, fill=MAP_WATER)
 
-    features = _load_provinces()
-    # City/reasonable-radius view, not a whole province — the vendored
-    # geometry has no city-level detail anyway, so at this scale the
-    # province polygon mostly just tints the background; the km rings
-    # below are what actually convey scale.
+    # City/reasonable-radius view, not a whole province.
     pad = 0.2  # ~22 km half-width
     box_w, box_h = map_x1 - map_x0, map_y1 - map_y0
-    # Province polygons at this tight zoom extend far past the panel in
-    # pixel space (national-scale geometry projected at a much larger local
-    # scale) — draw.polygon has no clip region, so drawing straight onto
-    # the main canvas bled into the header/cards above. Render onto a
-    # panel-sized sub-image instead, then paste that in — the sub-image's
-    # own edges do the clipping for free.
-    sub = Image.new("RGB", (box_w, box_h), MAP_WATER)
+    tile_img, project = _render_osm_basemap(box_w, box_h, lon - pad, lon + pad, lat - pad, lat + pad, pad=0.1)
+    sub = tile_img if tile_img else Image.new("RGB", (box_w, box_h), MAP_WATER)
     sd = ImageDraw.Draw(sub)
-    project = _make_projector(lon - pad, lon + pad, lat - pad, lat + pad,
-                               0, 0, box_w, box_h, pad=0.1)
-
-    for feat in features:
-        geom = feat.get("geometry", {})
-        gtype = geom.get("type")
-        polys = geom.get("coordinates", [])
-        if gtype == "Polygon":
-            polys = [polys]
-        for poly in polys:
-            if not poly:
-                continue
-            ring = poly[0]
-            pts = [project(plat, plon) for plon, plat in ring]
-            if len(pts) >= 3:
-                sd.polygon(pts, fill=MAP_LAND, outline=MAP_BORDER, width=2)
+    if not tile_img:
+        sd.text((16, 20), "(peta OSM tidak tersedia)", font=font(13), fill=MAP_LABEL)
 
     px, py = project(lat, lon)
 
@@ -464,12 +574,12 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
         _halo_text(sd, (px + r * 0.70, py - r * 0.70 - 12), label, font(11))
 
     # ── nearby nodes, drawn in a distinct color from the requester's own pin ──
-    for other_n, olat, olon, oapprox, dist in nearby:
+    for other_n, olat, olon, osource, dist in nearby:
         opx, opy = project(olat, olon)
         if not (0 <= opx <= box_w and 0 <= opy <= box_h):
             continue
         _draw_pin(sd, opx, opy, r=6, fill=PIN_OTHER)
-    for other_n, olat, olon, oapprox, dist in nearby[:NEARBY_LABEL_MAX]:
+    for other_n, olat, olon, osource, dist in nearby[:NEARBY_LABEL_MAX]:
         opx, opy = project(olat, olon)
         if 0 <= opx <= box_w and 0 <= opy <= box_h:
             oshort = (other_n.get("short") or "?").strip()
@@ -480,7 +590,9 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
     if city:
         _halo_text(sd, (px + 9, py - 3), city, font(12, bold=True), fill=MAP_LABEL, anchor="lm")
 
-    _draw_pin(sd, px, py, fill=PIN_FILL)
+    _draw_pin(sd, px, py, fill=SRC_COLOR[source])
+    if tile_img:
+        _halo_text(sd, (box_w - 6, box_h - 6), _OSM_ATTRIBUTION, font(9), anchor="rs")
     img.paste(sub, (map_x0, map_y0))
 
     # ── info block: node name, city, coords, hardware, nearest node ────────
@@ -495,7 +607,7 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
         info_y += 19
     d.text((x + 20, info_y), f"{lat:.4f}, {lon:.4f}", font=font(12), fill=MUTED)
     info_y += 19
-    d.text((x + 20, info_y), hw, font=font(12), fill=FAINT)
+    d.text((x + 20, info_y), f"{hw} · {SRC_LABEL[source]}", font=font(11), fill=FAINT)
     info_y += 26
 
     if nearby:
@@ -512,9 +624,18 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
         if extra > 0:
             d.text((x + 20, info_y), f"+{extra} node lain dalam {NEARBY_RADIUS_KM} km",
                    font=font(11), fill=FAINT)
+            info_y += 17
     else:
         d.text((x + 20, info_y), f"Tidak ada node lain dalam {NEARBY_RADIUS_KM} km",
                font=font(12), fill=FAINT)
+        info_y += 17
+
+    if same_city_count:
+        # These nodes collapse to the same registered-city point as the
+        # requester — real distance unknown, not "0 km" — say so plainly
+        # instead of omitting them or implying a precision we don't have.
+        d.text((x + 20, info_y), f"+{same_city_count} node di kota sama (jarak tak diketahui)",
+               font=font(11), fill=FAINT)
 
 
 def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
@@ -523,75 +644,70 @@ def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
 
     map_x0, map_y0 = x + 16, y + 50
     map_x1, map_y1 = x + w - 16, y + h - 16
-    rounded(d, (map_x0, map_y0, map_x1, map_y1), 8, fill=MAP_WATER)
+    box_w, box_h = map_x1 - map_x0, map_y1 - map_y0
 
-    features = _load_provinces()
-    gps_count = sum(1 for _, _, _, approx in positions if not approx)
-    approx_count = sum(1 for _, _, _, approx in positions if approx)
+    own_count = sum(1 for _, _, _, s in positions if s == SRC_OWN)
+    meshnode_count = sum(1 for _, _, _, s in positions if s == SRC_MESHNODE)
+    city_count = sum(1 for _, _, _, s in positions if s == SRC_CITY)
 
-    if not features:
-        d.text((map_x0 + 20, map_y0 + 20), "(peta tidak tersedia)", font=font(14), fill=FAINT)
-        return
-
-    project = _make_projector(95.0, 141.1, -11.0, 6.1, map_x0, map_y0, map_x1, map_y1)
-
-    # ── province polygons (exterior rings only — this dataset has no holes
-    # worth rendering for an infographic at this scale) + name labels ──────
-    f_province = font(11)
-    for feat in features:
-        geom = feat.get("geometry", {})
-        gtype = geom.get("type")
-        polys = geom.get("coordinates", [])
-        if gtype == "Polygon":
-            polys = [polys]
-        for poly in polys:
-            if not poly:
-                continue
-            ring = poly[0]  # exterior ring
-            pts = [project(lat, lon) for lon, lat in ring]
-            if len(pts) >= 3:
-                d.polygon(pts, fill=MAP_LAND, outline=MAP_BORDER, width=2)
-
-        name = feat.get("properties", {}).get("Propinsi")
-        centroid = _province_centroid(feat, project)
-        if name and centroid and map_x0 < centroid[0] < map_x1 and map_y0 < centroid[1] < map_y1:
-            _halo_text(d, centroid, name.title(), f_province, anchor="mm")
+    tile_img, project = _render_osm_basemap(box_w, box_h, 95.0, 141.1, -11.0, 6.1, pad=0.05, axis="width")
+    sub = tile_img if tile_img else Image.new("RGB", (box_w, box_h), MAP_WATER)
+    sd = ImageDraw.Draw(sub)
+    if not tile_img:
+        sd.text((16, 20), "(peta OSM tidak tersedia)", font=font(14), fill=MAP_LABEL)
 
     # ── registered-city labels (only cities that actually have a node) ─────
+    # OSM's own tiles already carry real place names at this zoom, so this
+    # only labels registry cities that OSM itself might not show (smaller
+    # towns), to make clear *why* a pin sits where it does.
     seen_cities = set()
     f_city = font(11, bold=True)
-    for n, lat, lon, is_approx in positions:
-        if not is_approx:
+    for n, lat, lon, source in positions:
+        if source != SRC_CITY:
             continue
         short = (n.get("short") or "").strip().upper()
         city = (registry.get(short) or {}).get("city")
         if not city or city in seen_cities:
             continue
         px, py = project(lat, lon)
-        if map_x0 <= px <= map_x1 and map_y0 <= py <= map_y1:
+        if 0 <= px <= box_w and 0 <= py <= box_h:
             seen_cities.add(city)
-            _halo_text(d, (px + 8, py - 3), city, f_city, anchor="lm")
+            _halo_text(sd, (px + 8, py - 3), city, f_city, anchor="lm")
 
     # ── node pins ────────────────────────────────────────────────────────────
-    # Approximate (city-centroid) positions render as a smaller pin than
-    # real GPS fixes, and several nodes sharing one city will visually stack
-    # at the same point — that's honest, not a bug: it IS the same point.
-    for n, lat, lon, is_approx in positions:
+    # Color + size both encode the source (own live session brightest/
+    # biggest, meshnode.id mid, city-centroid dimmest/smallest) — several
+    # nodes sharing one city will visually stack at the same point, that's
+    # honest, not a bug: it IS the same point.
+    for n, lat, lon, source in positions:
         px, py = project(lat, lon)
-        if not (map_x0 <= px <= map_x1 and map_y0 <= py <= map_y1):
+        if not (0 <= px <= box_w and 0 <= py <= box_h):
             continue
-        r = 6 if is_approx else 9
-        _draw_pin(d, px, py, r=r, fill=ACCENT_DK if is_approx else PIN_FILL)
+        _draw_pin(sd, px, py, r=SRC_RADIUS[source], fill=SRC_COLOR[source])
+
+    # Floating coverage card in the top-right corner — that area is open
+    # sea for Indonesia's actual shape at this zoom, so it puts the "no
+    # location" nodes somewhere on the map instead of only in the caption.
+    unknown_count = len(nodes) - own_count - meshnode_count - city_count
+    _draw_coverage_card(sd, box_w - 196 - 12, 12, own_count, meshnode_count, city_count, unknown_count)
+
+    if tile_img:
+        _halo_text(sd, (box_w - 6, box_h - 6), _OSM_ATTRIBUTION, font(9), anchor="rs")
+    img.paste(sub, (map_x0, map_y0))
 
     # ── legend + honest caption ──────────────────────────────────────────────
     leg_y = map_y0 + 12
-    d.ellipse((map_x0 + 12, leg_y, map_x0 + 20, leg_y + 8), fill=PIN_FILL)
-    _halo_text(d, (map_x0 + 26, leg_y - 3), "GPS asli", font(12))
-    d.ellipse((map_x0 + 100, leg_y + 1, map_x0 + 106, leg_y + 7), fill=ACCENT_DK)
-    _halo_text(d, (map_x0 + 112, leg_y - 3), "perkiraan dari kota terdaftar", font(12))
+    leg_x = map_x0 + 12
+    for label, color in ((SRC_LABEL[SRC_OWN], SRC_COLOR[SRC_OWN]),
+                         (SRC_LABEL[SRC_MESHNODE], SRC_COLOR[SRC_MESHNODE]),
+                         (SRC_LABEL[SRC_CITY], SRC_COLOR[SRC_CITY])):
+        d.ellipse((leg_x, leg_y + 1, leg_x + 8, leg_y + 9), fill=color)
+        tw = text_w(d, label, font(12))
+        _halo_text(d, (leg_x + 14, leg_y - 2), label, font(12))
+        leg_x += 14 + tw + 18
 
-    caption = (f"{gps_count} node dgn GPS asli, {approx_count} dgn posisi perkiraan "
-               f"(dari kota terdaftar), {len(nodes) - gps_count - approx_count} tanpa data lokasi")
+    caption = (f"{own_count} node GPS langsung, {meshnode_count} dari map.meshnode.id, "
+               f"{city_count} posisi perkiraan (kota terdaftar), {unknown_count} tanpa data lokasi")
     d.text((x + 20, y + h - 30), caption, font=font(13), fill=MUTED)
 
 
