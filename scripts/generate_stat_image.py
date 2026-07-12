@@ -183,9 +183,19 @@ def _get_device_hardware():
 def _normalize_hw(hw, hw_map):
     """int hwModel -> its slug string, so it merges with nodes that already
     reported the resolved string for the same hardware. Passes strings and
-    unmapped values through unchanged."""
+    unmapped values through unchanged.
+
+    255 is hardcoded here because it's Meshtastic's own reserved
+    HardwareModel enum value for PRIVATE_HW (custom/private builds) — it's
+    deliberately NOT a real product, so it never appears in
+    api.meshtastic.org's device catalog, and num_to_slug can never resolve
+    it on its own. Without this, nodes reporting numeric 255 split into a
+    separate "hwModel 255" bucket instead of merging with nodes that
+    already reported the string "PRIVATE_HW" for the same meaning."""
     if isinstance(hw, str):
         return hw
+    if hw == 255:
+        return "PRIVATE_HW"
     return hw_map["num_to_slug"].get(str(hw), f"hwModel {hw}")
 
 
@@ -266,12 +276,13 @@ PIN_HEAD_R = 9  # teardrop head radius, px
 # session" in with "our own live session" under one generic "GPS asli". ────
 SRC_OWN      = "own"       # live from our own mqtt_tap session (/api/nodes)
 SRC_MESHNODE = "meshnode"  # map.meshnode.id's public community map report
+SRC_GATEWAY  = "gateway"   # inferred: nearest node that heard it, via meshnode.id's seenBy
 SRC_CITY     = "city"      # registry city centroid, geocoded — least precise
 
-SRC_COLOR = {SRC_OWN: ACCENT, SRC_MESHNODE: (86, 149, 227), SRC_CITY: ACCENT_DK}
-SRC_RADIUS = {SRC_OWN: 9, SRC_MESHNODE: 8, SRC_CITY: 6}
+SRC_COLOR = {SRC_OWN: ACCENT, SRC_MESHNODE: (86, 149, 227), SRC_GATEWAY: (176, 130, 227), SRC_CITY: ACCENT_DK}
+SRC_RADIUS = {SRC_OWN: 9, SRC_MESHNODE: 8, SRC_GATEWAY: 6, SRC_CITY: 6}
 SRC_LABEL = {SRC_OWN: "GPS langsung (RiV-Bot)", SRC_MESHNODE: "map.meshnode.id",
-             SRC_CITY: "perkiraan dari kota terdaftar"}
+             SRC_GATEWAY: "diperkirakan dari gateway", SRC_CITY: "perkiraan dari kota terdaftar"}
 PIN_FILL = SRC_COLOR[SRC_OWN]  # kept for the zoom inset's own-node pin
 
 
@@ -315,32 +326,44 @@ def _draw_pin(d, px, py, r=PIN_HEAD_R, fill=PIN_FILL):
     d.ellipse((px - r * 0.42, py - r * 1.9, px + r * 0.42, py - r * 1.1), fill=(255, 255, 255))
 
 
-def _draw_coverage_card(sd, cx, cy, own_count, meshnode_count, city_count, unknown_count):
+def _draw_coverage_card(sd, cx, cy, own_count, meshnode_count, gateway_count, city_count,
+                         unknown_count, unknown_shorts):
     """Floating white info-card (like a real Maps popup) with a small donut
     chart, in a corner of the map — turns the empty-ocean space into a
     stand-in for the nodes with no location, instead of the caption text
     below the map being the only place that's mentioned at all. Shows all
-    four position sources (own live session / map.meshnode.id / city
-    estimate / unknown) so it doubles as a "where did this data come from"
-    legend, not just a coverage percentage."""
-    total = own_count + meshnode_count + city_count + unknown_count
+    five position sources (own live session / map.meshnode.id / gateway
+    inference / city estimate / unknown) so it doubles as a "where did this
+    data come from" legend, then names the still-unplaced nodes directly as
+    wrapped chips rather than leaving them as just a number."""
+    total = own_count + meshnode_count + gateway_count + city_count + unknown_count
     if total == 0:
         return
 
-    card_w, card_h = 196, 140
+    card_w = 232
+    # Fixed height, chosen for the worst case (donut+5 legend rows, plus up
+    # to 3 wrapped rows of "unplaced" chips) — drawn up front so the white
+    # background sits under everything instead of being sized after the
+    # fact, which PIL can't retroactively apply to already-drawn content.
+    card_h = 250 if unknown_shorts else 132
     x0, y0 = cx, cy
-    x1, y1 = x0 + card_w, y0 + card_h
     d = sd
-    d.rounded_rectangle((x0, y0, x1, y1), radius=10, fill=(255, 255, 255),
+    f_chip = font(9)
+
+    d.rounded_rectangle((x0, y0, x0 + card_w, y0 + card_h), radius=10, fill=(255, 255, 255),
                          outline=(210, 213, 216), width=1)
 
     d.text((x0 + 14, y0 + 12), "Sumber Lokasi", font=font(12, bold=True), fill=(40, 40, 40))
 
-    r = 30
-    dcx, dcy = x0 + 14 + r, y0 + 32 + r
+    r = 26
+    dcx, dcy = x0 + 14 + r, y0 + 30 + r
     start = -90
-    for count, color in ((own_count, SRC_COLOR[SRC_OWN]), (meshnode_count, SRC_COLOR[SRC_MESHNODE]),
-                          (city_count, SRC_COLOR[SRC_CITY]), (unknown_count, PIN_UNKNOWN)):
+    rows = [("RiV-Bot langsung", own_count, SRC_COLOR[SRC_OWN]),
+            ("meshnode.id", meshnode_count, SRC_COLOR[SRC_MESHNODE]),
+            ("Perkiraan gateway", gateway_count, SRC_COLOR[SRC_GATEWAY]),
+            ("Perkiraan kota", city_count, SRC_COLOR[SRC_CITY]),
+            ("Tanpa lokasi", unknown_count, PIN_UNKNOWN)]
+    for _, count, color in rows:
         if count <= 0:
             continue
         sweep = 360 * count / total
@@ -349,18 +372,43 @@ def _draw_coverage_card(sd, cx, cy, own_count, meshnode_count, city_count, unkno
     # punch the donut hole
     hole_r = r * 0.55
     d.ellipse((dcx - hole_r, dcy - hole_r, dcx + hole_r, dcy + hole_r), fill=(255, 255, 255))
-    d.text((dcx, dcy), f"{total}", font=font(13, bold=True), fill=(40, 40, 40), anchor="mm")
+    d.text((dcx, dcy), f"{total}", font=font(12, bold=True), fill=(40, 40, 40), anchor="mm")
 
-    rows = [("RiV-Bot", own_count, SRC_COLOR[SRC_OWN]),
-            ("meshnode.id", meshnode_count, SRC_COLOR[SRC_MESHNODE]),
-            ("Perkiraan kota", city_count, SRC_COLOR[SRC_CITY]),
-            ("Tanpa lokasi", unknown_count, PIN_UNKNOWN)]
-    ly = y0 + 38
-    lx = dcx + r + 14
+    ly = y0 + 34
+    lx = dcx + r + 12
     for label, count, color in rows:
         d.ellipse((lx, ly + 3, lx + 8, ly + 11), fill=color)
         d.text((lx + 13, ly), f"{label} ({count})", font=font(10), fill=(60, 60, 60))
-        ly += 17
+        ly += 15
+
+    # ── unplaced-node chips, instead of leaving them as just a number ──────
+    chips_y0 = max(ly, dcy + r) + 12
+    y = chips_y0
+    if unknown_shorts:
+        d.line((x0 + 14, y, x0 + card_w - 14, y), fill=(228, 230, 232), width=1)
+        y += 10
+        d.text((x0 + 14, y), f"Belum diketahui ({len(unknown_shorts)}):", font=font(10, bold=True), fill=(60, 60, 60))
+        y += 18
+        cx_chip = x0 + 14
+        max_rows = 3
+        row = 0
+        shown = 0
+        for short in unknown_shorts:
+            tw = text_w(d, short, f_chip)
+            chip_w = tw + 12
+            if cx_chip + chip_w > x0 + card_w - 14:
+                cx_chip = x0 + 14
+                y += 16
+                row += 1
+                if row >= max_rows:
+                    break
+            d.rounded_rectangle((cx_chip, y, cx_chip + chip_w, y + 14), radius=7, fill=(238, 240, 242))
+            d.text((cx_chip + 6, y + 2), short, font=f_chip, fill=(80, 84, 88))
+            cx_chip += chip_w + 5
+            shown += 1
+        remaining = len(unknown_shorts) - shown
+        if remaining > 0:
+            d.text((x0 + 14, y + 18), f"+{remaining} node lain", font=font(9), fill=(140, 144, 148))
 
 
 def _load_city_coords_cache():
@@ -408,38 +456,64 @@ def _geocode_city(city, cache):
 _MESHNODE_MAP_URL = "https://map.meshnode.id/api/nodes/map"
 
 
-def _get_meshnode_positions():
-    """Real GPS for nodes our own mqtt_tap session hasn't heard fresh
-    lat/lon from directly, sourced from map.meshnode.id's public node-map
-    API — the community's shared MQTT broker (mqtt.meshnode.id, same one
-    RiV-Bot itself listens on) where devices self-publish a Meshtastic
-    "map report" containing their GPS position. This is genuine reported
-    GPS, not a guess, and covers ~85% of what our own session shows as
-    "no location" — some other client on the same broker simply heard that
-    node's map report more recently than we did. No API key; public JSON.
-    Best-effort: an empty dict on any failure just falls back to the
-    existing city-centroid tier, same as before this existed."""
+def _get_meshnode_data():
+    """Fetches map.meshnode.id's full node-map dataset once per run and
+    indexes it two ways:
+      by_short: {SHORT: (lat, lon)} — nodes that self-reported GPS (used
+        for the SRC_MESHNODE tier).
+      by_num:   {node_num_int: (lat, lon)} — same data keyed by Meshtastic's
+        numeric node id, so a *different* node's "seenBy" gateway list (a
+        set of "msh/ID/.../!hexnum" MQTT topics) can be resolved back to
+        that gateway's own position, for the SRC_GATEWAY inference tier.
+      seen_by:  {SHORT: [gateway_num_int, ...]} — every node's raw seenBy
+        list, regardless of whether that node itself has coordinates.
+      fw_by_short: {SHORT: "2.7.15"} — firmware version (major.minor.patch,
+        git-hash suffix dropped), for nodes reporting one. Our own
+        /api/nodes has no fwVersion field at all — this is the only source.
+    map.meshnode.id is the community's shared MQTT broker (mqtt.meshnode.id,
+    same one RiV-Bot listens on) — devices self-publish a Meshtastic "map
+    report" with GPS; other clients on the broker record who last heard
+    whom. No API key; public JSON. Best-effort: returns empty structures on
+    any failure, so callers just fall back further down the tier chain."""
+    empty = {"by_short": {}, "by_num": {}, "seen_by": {}, "fw_by_short": {}}
     try:
         raw = json.load(urllib.request.urlopen(_MESHNODE_MAP_URL, timeout=15))
-        out = {}
-        for meta in raw.values():
-            short = (meta.get("shortName") or "").strip().upper()
-            lat, lon = meta.get("latitude"), meta.get("longitude")
-            # coords are int, scaled by 1e7 (Meshtastic's own wire format)
-            if short and lat and lon:
-                out[short] = (lat / 1e7, lon / 1e7)
-        return out
     except Exception as e:
         print(f"map.meshnode.id fetch failed: {e}")
-        return {}
+        return empty
+
+    by_short, by_num, seen_by, fw_by_short = {}, {}, {}, {}
+    for num_str, meta in raw.items():
+        short = (meta.get("shortName") or "").strip().upper()
+        lat, lon = meta.get("latitude"), meta.get("longitude")
+        if lat and lon:
+            pos = (lat / 1e7, lon / 1e7)  # coords are int, scaled by 1e7 (Meshtastic's wire format)
+            if short:
+                by_short[short] = pos
+            try:
+                by_num[int(num_str)] = pos
+            except ValueError:
+                pass
+        fw = meta.get("fwVersion")
+        if short and fw:
+            fw_by_short[short] = ".".join(fw.split(".")[:3])  # drop the trailing git-hash component
+        gateways = []
+        for topic in (meta.get("seenBy") or {}):
+            hexid = topic.rsplit("!", 1)[-1]
+            try:
+                gateways.append(int(hexid, 16))
+            except ValueError:
+                continue
+        if short and gateways:
+            seen_by[short] = gateways
+    return {"by_short": by_short, "by_num": by_num, "seen_by": seen_by, "fw_by_short": fw_by_short}
 
 
-def _fallback_positions(nodes, registry):
-    """Three-tier position lookup, each node tagged with SRC_OWN / SRC_MESHNODE
-    / SRC_CITY so the map can show — and the legend can honestly label —
-    exactly where each pin's coordinates came from. Returns [(node, lat,
-    lon, source), ...]."""
-    meshnode_positions = _get_meshnode_positions()
+def _fallback_positions(nodes, registry, meshnode):
+    """Four-tier position lookup, each node tagged with SRC_OWN /
+    SRC_MESHNODE / SRC_GATEWAY / SRC_CITY so the map can show — and the
+    legend can honestly label — exactly where each pin's coordinates came
+    from. Returns [(node, lat, lon, source), ...]."""
     cache = _load_city_coords_cache()
     dirty = False
     out = []
@@ -448,9 +522,23 @@ def _fallback_positions(nodes, registry):
             out.append((n, n["lat"], n["lon"], SRC_OWN))
             continue
         short = (n.get("short") or "").strip().upper()
-        mn_pos = meshnode_positions.get(short)
+        mn_pos = meshnode["by_short"].get(short)
         if mn_pos:
             out.append((n, mn_pos[0], mn_pos[1], SRC_MESHNODE))
+            continue
+        # No self-reported position anywhere — fall back to whichever
+        # gateway last heard this node's packets (meshnode.id's "seenBy"),
+        # using THAT gateway's own real position as a rough stand-in. A
+        # node is only ever heard within LoRa range of whoever heard it, so
+        # this is a much tighter estimate than a whole city, even though
+        # it's still an approximation, not the node's own GPS.
+        gw_pos = None
+        for gw_num in meshnode["seen_by"].get(short, []):
+            gw_pos = meshnode["by_num"].get(gw_num)
+            if gw_pos:
+                break
+        if gw_pos:
+            out.append((n, gw_pos[0], gw_pos[1], SRC_GATEWAY))
             continue
         entry = registry.get(short)
         city = entry.get("city") if entry else None
@@ -495,7 +583,7 @@ NEARBY_LABEL_MAX = 6   # only label this many pins on the map itself, to avoid c
 NEARBY_LIST_MAX = 5    # only list this many in the sidebar text
 
 
-def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry, hw_map, positions):
+def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry, hw_map, positions, meshnode):
     """Right-sidebar panel: a tight zoom around whoever sent !stat, reusing
     the same projector/pin-drawing approach as the national map but with a
     city-scale bounding box instead of all of Indonesia. Falls back to a
@@ -519,19 +607,21 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
 
     # ── find nearby nodes (real distance, not just "inside the same pixel
     # box") so the nearest-node figure and the list are both trustworthy.
-    # Skip pairs where BOTH points are city-fallback positions that landed
-    # on the exact same geocoded centroid — that's two nodes registered to
-    # the same city, not two nodes verified to be near each other, and
+    # Skip pairs where BOTH points are approximate (city-centroid or
+    # gateway-inferred) positions that landed on the exact same coordinate
+    # — that's two nodes bucketed to the same city, or two nodes heard by
+    # the same gateway, not two nodes verified to be near each other, and
     # reporting it as "0.0 km" claims a precision the data doesn't have. A
-    # requester-vs-real-GPS comparison (or two DIFFERENT city centroids) is
-    # still shown, since that distance is meaningful even if approximate. ──
+    # requester-vs-real-GPS comparison (or two DIFFERENT estimated points)
+    # is still shown, since that distance is meaningful even if approximate. ──
+    APPROX_SOURCES = (SRC_CITY, SRC_GATEWAY)
     nearby = []
     for other_n, olat, olon, osource in positions:
         if other_n is n:
             continue
-        same_fallback_city = (source == SRC_CITY and osource == SRC_CITY
-                               and abs(olat - lat) < 1e-6 and abs(olon - lon) < 1e-6)
-        if same_fallback_city:
+        same_fallback_point = (source in APPROX_SOURCES and osource in APPROX_SOURCES
+                                and abs(olat - lat) < 1e-6 and abs(olon - lon) < 1e-6)
+        if same_fallback_point:
             continue
         dist = _haversine_km(lat, lon, olat, olon)
         if dist <= NEARBY_RADIUS_KM:
@@ -539,13 +629,13 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
     nearby.sort(key=lambda t: t[4])
     same_city_count = sum(
         1 for other_n, olat, olon, osource in positions
-        if other_n is not n and source == SRC_CITY and osource == SRC_CITY
+        if other_n is not n and source in APPROX_SOURCES and osource in APPROX_SOURCES
         and abs(olat - lat) < 1e-6 and abs(olon - lon) < 1e-6
     )
 
     # Bottom info block needs room for: own node (name/city/coords/hw) +
     # nearest-node line + a short neighbor list + the same-city caveat line.
-    info_h = 118 + 20 + min(len(nearby), NEARBY_LIST_MAX) * 17 + (17 if same_city_count else 0)
+    info_h = 118 + 17 + 20 + min(len(nearby), NEARBY_LIST_MAX) * 17 + (15 if nearby else 0) + (17 if same_city_count else 0)
     map_x0, map_y0 = x + 16, y + 50
     map_x1, map_y1 = x + w - 16, y + h - 16 - info_h
     rounded(d, (map_x0, map_y0, map_x1, map_y1), 8, fill=MAP_WATER)
@@ -595,9 +685,10 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
         _halo_text(sd, (box_w - 6, box_h - 6), _OSM_ATTRIBUTION, font(9), anchor="rs")
     img.paste(sub, (map_x0, map_y0))
 
-    # ── info block: node name, city, coords, hardware, nearest node ────────
+    # ── info block: node name, city, coords, hardware, firmware, nearest node ──
     long_name = (n.get("long") or "").strip()
     hw = _normalize_hw(n.get("hw", "?"), hw_map)
+    fw = meshnode["fw_by_short"].get(short)
 
     info_y = map_y1 + 12
     d.text((x + 20, info_y), long_name or short, font=font(15, bold=True), fill=TEXT)
@@ -608,6 +699,9 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
     d.text((x + 20, info_y), f"{lat:.4f}, {lon:.4f}", font=font(12), fill=MUTED)
     info_y += 19
     d.text((x + 20, info_y), f"{hw} · {SRC_LABEL[source]}", font=font(11), fill=FAINT)
+    info_y += 17
+    d.text((x + 20, info_y), f"Firmware: {fw}" if fw else "Firmware: tidak diketahui",
+           font=font(11), fill=FAINT)
     info_y += 26
 
     if nearby:
@@ -625,16 +719,23 @@ def draw_zoom_inset(d, img, x, y, w, h, requester_short, requester_pos, registry
             d.text((x + 20, info_y), f"+{extra} node lain dalam {NEARBY_RADIUS_KM} km",
                    font=font(11), fill=FAINT)
             info_y += 17
+        # All distances above are great-circle (straight-line), not travel
+        # distance or the actual RF path — one footnote instead of repeating
+        # it on every row.
+        d.text((x + 20, info_y), "* jarak garis lurus, bukan jarak tempuh",
+               font=font(10), fill=FAINT)
+        info_y += 15
     else:
         d.text((x + 20, info_y), f"Tidak ada node lain dalam {NEARBY_RADIUS_KM} km",
                font=font(12), fill=FAINT)
         info_y += 17
 
     if same_city_count:
-        # These nodes collapse to the same registered-city point as the
-        # requester — real distance unknown, not "0 km" — say so plainly
-        # instead of omitting them or implying a precision we don't have.
-        d.text((x + 20, info_y), f"+{same_city_count} node di kota sama (jarak tak diketahui)",
+        # These nodes collapse to the same estimated point as the requester
+        # (same city centroid, or same inferred gateway) — real distance
+        # unknown, not "0 km" — say so plainly instead of omitting them or
+        # implying a precision we don't have.
+        d.text((x + 20, info_y), f"+{same_city_count} node di titik perkiraan sama",
                font=font(11), fill=FAINT)
 
 
@@ -648,6 +749,7 @@ def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
 
     own_count = sum(1 for _, _, _, s in positions if s == SRC_OWN)
     meshnode_count = sum(1 for _, _, _, s in positions if s == SRC_MESHNODE)
+    gateway_count = sum(1 for _, _, _, s in positions if s == SRC_GATEWAY)
     city_count = sum(1 for _, _, _, s in positions if s == SRC_CITY)
 
     tile_img, project = _render_osm_basemap(box_w, box_h, 95.0, 141.1, -11.0, 6.1, pad=0.05, axis="width")
@@ -686,10 +788,16 @@ def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
         _draw_pin(sd, px, py, r=SRC_RADIUS[source], fill=SRC_COLOR[source])
 
     # Floating coverage card in the top-right corner — that area is open
-    # sea for Indonesia's actual shape at this zoom, so it puts the "no
-    # location" nodes somewhere on the map instead of only in the caption.
-    unknown_count = len(nodes) - own_count - meshnode_count - city_count
-    _draw_coverage_card(sd, box_w - 196 - 12, 12, own_count, meshnode_count, city_count, unknown_count)
+    # sea for Indonesia's actual shape at this zoom. Nodes with genuinely
+    # no position anywhere (not even a gateway to infer from) are named
+    # here directly instead of just being a number, so "no location" means
+    # something concrete rather than disappearing into blank water.
+    unknown_count = len(nodes) - own_count - meshnode_count - gateway_count - city_count
+    placed_shorts = {(n.get("short") or "").strip().upper() for n, _, _, _ in positions}
+    unknown_shorts = sorted((n.get("short") or "?").strip() for n in nodes
+                             if (n.get("short") or "").strip().upper() not in placed_shorts)
+    _draw_coverage_card(sd, box_w - 232 - 12, 12, own_count, meshnode_count, gateway_count,
+                         city_count, unknown_count, unknown_shorts)
 
     if tile_img:
         _halo_text(sd, (box_w - 6, box_h - 6), _OSM_ATTRIBUTION, font(9), anchor="rs")
@@ -700,14 +808,16 @@ def draw_indonesia_map(img, d, x, y, w, h, nodes, registry, positions):
     leg_x = map_x0 + 12
     for label, color in ((SRC_LABEL[SRC_OWN], SRC_COLOR[SRC_OWN]),
                          (SRC_LABEL[SRC_MESHNODE], SRC_COLOR[SRC_MESHNODE]),
+                         (SRC_LABEL[SRC_GATEWAY], SRC_COLOR[SRC_GATEWAY]),
                          (SRC_LABEL[SRC_CITY], SRC_COLOR[SRC_CITY])):
         d.ellipse((leg_x, leg_y + 1, leg_x + 8, leg_y + 9), fill=color)
         tw = text_w(d, label, font(12))
         _halo_text(d, (leg_x + 14, leg_y - 2), label, font(12))
         leg_x += 14 + tw + 18
 
-    caption = (f"{own_count} node GPS langsung, {meshnode_count} dari map.meshnode.id, "
-               f"{city_count} posisi perkiraan (kota terdaftar), {unknown_count} tanpa data lokasi")
+    caption = (f"{own_count} GPS langsung, {meshnode_count} dari map.meshnode.id, "
+               f"{gateway_count} diperkirakan dari gateway, {city_count} dari kota terdaftar, "
+               f"{unknown_count} tanpa data lokasi")
     d.text((x + 20, y + h - 30), caption, font=font(13), fill=MUTED)
 
 
@@ -756,13 +866,23 @@ def main():
     nodes = json.load(urllib.request.urlopen("http://localhost:8080/api/nodes", timeout=15))
     import modules.statistik as st
     registry = st._get_registry()
+    meshnode = _get_meshnode_data()
 
-    positions = _fallback_positions(nodes, registry)
+    positions = _fallback_positions(nodes, registry, meshnode)
     requester_pos = _find_requester_position(requester_short, positions)
 
     total = len(nodes)
     hw_map = _get_device_hardware()
     hw_counter = collections.Counter(_normalize_hw(n.get("hw", "?"), hw_map) for n in nodes)
+
+    fw_counter = collections.Counter()
+    fw_known = 0
+    for n in nodes:
+        short = (n.get("short") or "").strip().upper()
+        fw = meshnode["fw_by_short"].get(short)
+        if fw:
+            fw_counter[fw] += 1
+            fw_known += 1
 
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
@@ -787,27 +907,39 @@ def main():
     card_w = main_w
     stat_card(d, main_x, card_y, card_w, card_h, "NODE TERDETEKSI", str(total), ACCENT)
 
-    # ── hardware population bar chart (with device icons) ──────────────────
+    # ── hardware + firmware charts, side by side (not stacked) — stacking
+    # them left the firmware chart's shorter height as dead space below
+    # wherever the sidebar had already ended. ───────────────────────────────
     chart_y = card_y + card_h + 30
-    chart_x = main_x
-    chart_w = main_w
-    top_hw = hw_counter.most_common(10)
-    row_h = 48
+    col_gap = 20
+    # Firmware labels are short version strings ("2.7.15"); hardware names
+    # can run to 20 chars ("SEEED_WIO_TRACKER_L1") — an even 50/50 split
+    # forced hardware names to truncate while firmware had empty margin.
+    # Give firmware just enough width for its bars and let hardware have
+    # the rest.
+    fw_col_w = 250
+    hw_col_w = main_w - col_gap - fw_col_w
+    hw_x = main_x
+    fw_x = main_x + hw_col_w + col_gap
+
+    # -- hardware population bar chart (with device icons) --
+    top_hw = hw_counter.most_common(9)
+    row_h = 44
     chart_h = 40 + row_h * len(top_hw) + 20
 
-    rounded(d, (chart_x, chart_y, chart_x + chart_w, chart_y + chart_h), 12, fill=SURF, outline=BORDER)
-    d.text((chart_x + 20, chart_y + 16), "Sebaran Hardware", font=font(17, bold=True), fill=TEXT)
+    rounded(d, (hw_x, chart_y, hw_x + hw_col_w, chart_y + chart_h), 12, fill=SURF, outline=BORDER)
+    d.text((hw_x + 20, chart_y + 16), "Sebaran Hardware", font=font(17, bold=True), fill=TEXT)
 
     max_count = max(c for _, c in top_hw) if top_hw else 1
-    icon_col_w = _ICON_SIZE + 12
-    label_w = 220
-    bar_x0 = chart_x + 20 + icon_col_w + label_w
-    bar_max_w = chart_w - 40 - icon_col_w - label_w - 60
-    f_hw_label = font(14)
-    f_hw_count = font(14, bold=True)
+    icon_col_w = _ICON_SIZE + 10
+    hw_label_w = 190
+    bar_x0 = hw_x + 20 + icon_col_w + hw_label_w
+    bar_max_w = hw_col_w - 40 - icon_col_w - hw_label_w - 50
+    f_hw_label = font(13)
+    f_hw_count = font(13, bold=True)
     row_y = chart_y + 52
     for hw, count in top_hw:
-        icon_y = row_y + (row_h - _ICON_SIZE) // 2 - 4
+        icon_y = row_y + (row_h - _ICON_SIZE) // 2 - 2
         # hw is always a resolved slug string now (numeric hwModel values
         # were normalized before counting) — always try for an icon; devices
         # with no specific image fall back to the generic "unknown" one
@@ -817,25 +949,52 @@ def main():
             # Most device SVGs are dark line-art meant for a light page —
             # near-invisible on this dark theme without a light chip behind.
             chip_pad = 4
-            rounded(d, (chart_x + 20 - chip_pad, icon_y - chip_pad,
-                        chart_x + 20 + _ICON_SIZE + chip_pad, icon_y + _ICON_SIZE + chip_pad),
+            rounded(d, (hw_x + 20 - chip_pad, icon_y - chip_pad,
+                        hw_x + 20 + _ICON_SIZE + chip_pad, icon_y + _ICON_SIZE + chip_pad),
                     8, fill=(224, 228, 232))
-            img.paste(icon, (chart_x + 20, icon_y), icon)
-        label = hw if len(hw) <= 24 else hw[:22] + "…"
-        d.text((chart_x + 20 + icon_col_w, row_y + 10), label, font=f_hw_label, fill=MUTED)
+            img.paste(icon, (hw_x + 20, icon_y), icon)
+        d.text((hw_x + 20 + icon_col_w, row_y + 9), hw, font=f_hw_label, fill=MUTED)
         bar_w = max(6, int(bar_max_w * count / max_count))
-        rounded(d, (bar_x0, row_y + 8, bar_x0 + bar_w, row_y + 30), 4, fill=ACCENT_DK)
-        d.text((bar_x0 + bar_w + 10, row_y + 11), str(count), font=f_hw_count, fill=TEXT)
+        rounded(d, (bar_x0, row_y + 7, bar_x0 + bar_w, row_y + 27), 4, fill=ACCENT_DK)
+        d.text((bar_x0 + bar_w + 8, row_y + 9), str(count), font=f_hw_count, fill=TEXT)
         row_y += row_h
 
-    # ── sidebar: personal zoom inset, spans header through hw chart ────────
+    # -- firmware version distribution (from map.meshnode.id — our own
+    # /api/nodes has no fwVersion field at all) --
+    top_fw = fw_counter.most_common(8)
+    fw_row_h = 44
+    fw_h = 56 + fw_row_h * len(top_fw) + 16 if top_fw else 90
+
+    rounded(d, (fw_x, chart_y, fw_x + fw_col_w, chart_y + fw_h), 12, fill=SURF, outline=BORDER)
+    d.text((fw_x + 20, chart_y + 16), "Versi Firmware", font=font(17, bold=True), fill=TEXT)
+    d.text((fw_x + 20, chart_y + 40),
+           f"{fw_known}/{total} node · via meshnode.id",
+           font=font(11), fill=FAINT)
+
+    if top_fw:
+        fw_max = max(c for _, c in top_fw)
+        fw_label_w = 60
+        fw_bar_x0 = fw_x + 20 + fw_label_w
+        fw_bar_max_w = fw_col_w - 40 - fw_label_w - 50
+        f_fw_label = font(13)
+        f_fw_count = font(13, bold=True)
+        row_y = chart_y + 62
+        for fw, count in top_fw:
+            d.text((fw_x + 20, row_y + 8), fw, font=f_fw_label, fill=MUTED)
+            bar_w = max(6, int(fw_bar_max_w * count / fw_max))
+            rounded(d, (fw_bar_x0, row_y + 6, fw_bar_x0 + bar_w, row_y + 24), 4, fill=(86, 149, 227))
+            d.text((fw_bar_x0 + bar_w + 8, row_y + 8), str(count), font=f_fw_count, fill=TEXT)
+            row_y += fw_row_h
+
+    # ── sidebar: personal zoom inset, spans header through both charts ─────
+    charts_h = max(chart_h, fw_h)
     sidebar_y = card_y
-    sidebar_h = chart_y + chart_h - card_y
+    sidebar_h = chart_y + charts_h - card_y
     draw_zoom_inset(d, img, sidebar_x, sidebar_y, SIDEBAR_W, sidebar_h,
-                     requester_short, requester_pos, registry, hw_map, positions)
+                     requester_short, requester_pos, registry, hw_map, positions, meshnode)
 
     # ── Indonesia map with node pins (full width, below both columns) ──────
-    map_y = chart_y + chart_h + 24
+    map_y = chart_y + charts_h + 24  # sidebar_h is set to match this exactly
     map_h = 480
     draw_indonesia_map(img, d, main_x, map_y, W - 80, map_h, nodes, registry, positions)
 
