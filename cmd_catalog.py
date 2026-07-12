@@ -78,7 +78,7 @@ def handle_cmd_pure(message: str) -> str:
                 return f"{cmd} — {desc}"
         return f'🤖 Perintah "{arg}" tidak ditemukan. Ketik !cmd untuk lihat daftar.'
 
-    lines = ["📋 Perintah"]
+    lines = ["📋 Perintah", "⭐ Wajib coba: !ringkasan !stat", ""]
     for emoji, names in CATEGORIES:
         lines.append(f"{emoji} " + " ".join(f"!{n}" for n in names))
     lines.append("")
