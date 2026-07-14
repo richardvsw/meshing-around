@@ -23,6 +23,22 @@ _lock = threading.Lock()
 _MAX_HISTORY = 5
 
 
+def _try_chmod(path, mode):
+    """os.chmod requires owning the file (or root) — mesh_bot.service runs
+    as 'meshbot' and rivbot-ui runs as root, so whichever of them didn't
+    create a given file/dir here gets PermissionError on chmod even though
+    the target is already world-writable. That used to be an unguarded
+    call inside record_status's own try/except, which silently ate the
+    PermissionError AND skipped writing the status file entirely — so
+    "last success" never updated no matter how often a command actually
+    ran successfully. Isolated here so a chmod failure can't swallow the
+    write that matters."""
+    try:
+        os.chmod(path, mode)
+    except PermissionError:
+        pass
+
+
 def record_status(name, ok=True, error=None, extra=None):
     with _lock:
         try:
@@ -30,7 +46,7 @@ def record_status(name, ok=True, error=None, extra=None):
             # need write access to this directory, so keep it wide open (it
             # only ever holds small, non-sensitive freshness/status JSON).
             os.makedirs(_STATUS_DIR, exist_ok=True)
-            os.chmod(_STATUS_DIR, 0o777)
+            _try_chmod(_STATUS_DIR, 0o777)
             path = os.path.join(_STATUS_DIR, f"{name}.json")
 
             prev = {}
@@ -61,7 +77,7 @@ def record_status(name, ok=True, error=None, extra=None):
 
             with open(path, "w") as f:
                 json.dump(payload, f)
-            os.chmod(path, 0o666)
+            _try_chmod(path, 0o666)
         except Exception:
             pass  # status tracking must never break the actual command
 

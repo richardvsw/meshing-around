@@ -86,7 +86,9 @@ def get_ringkasan(message=None, message_from_id=None, deviceID=None):
         age = time.time() - c.get("generated_at", 0) if c else None
         if c and c.get("summary") and age < _LONGFAST_SUMMARY_MAX_AGE:
             rng = c.get("range_label", c.get("hour_label", "?"))
-            lines.append(f"💬 Obrolan LongFast jam {rng}: {c['summary']}")
+            count = c.get("message_count")
+            count_note = f" ({count} pesan)" if count is not None else ""
+            lines.append(f"💬 Obrolan LongFast jam {rng}{count_note}: {c['summary']}")
             lines.append("   Yuk gabung ngobrol! 👋")
     except FileNotFoundError:
         pass

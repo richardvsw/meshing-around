@@ -217,6 +217,7 @@ def auto_response(message, snr, rssi, hop, pkiStatus, message_from_id, channel_n
     "s:": lambda: surveyHandler(message, message_from_id, deviceID),
     "test": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "testing": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
+    "tes": lambda: handle_ping(message_from_id, deviceID, message, hop, snr, rssi, isDM, channel_number),
     "tictactoe": lambda: handleTicTacToe(message, message_from_id, deviceID),
     "tic-tac-toe": lambda: handleTicTacToe(message, message_from_id, deviceID),
     "tide": lambda: handle_tide(message_from_id, deviceID, channel_number),
@@ -445,7 +446,7 @@ def handle_ping(message_from_id, deviceID,  message, hop, snr, rssi, isDM, chann
     if "ping" in message.lower():
         msg = random.choice(["🏓 Nyambung bro!", "🏓 Sinyal ada nih!", "🏓 Waduh, ping-mu nyampe juga ternyata!", "🏓 Hei, masih hidup nih!"])
         type = "🏓PING"
-    elif "test" in message.lower() or "testing" in message.lower():
+    elif "test" in message.lower() or "testing" in message.lower() or "tes" in message.lower():
         msg = random.choice(["🎙Tes, tes, satu dua tiga", "🎙Tes suara nih",\
                              "🎙Cek sound, cek sound",\
                              "🎙Halo halo, kedengeran ga?", "🎙Kedengeran jelas nih!",\
@@ -2478,16 +2479,16 @@ def onReceive(packet, interface):
                         msgLogger.info(f"Device:{rxNode} Channel:{channel_number} | {get_name_from_number(message_from_id, 'long', rxNode)} | DM | " + message_log_string)
             else:
                 # message is on a channel
-                # Exact whole-message "Test"/"test" (see modules/magicword_pref.
-                # MAGIC_WORDS), or a "Test ...?"/"test ...?" question — the
-                # common ham-radio "just checking my radio works" convention —
-                # bypass the normal ! requirement below, but ONLY for these
-                # patterns, not any bang-less message. "test 123" (no ?) or
-                # "let's test this" do NOT match.
+                # Exact whole-message "Test"/"test"/"Tes"/"tes" (see
+                # modules/magicword_pref.MAGIC_WORDS), or a "Test ...?"/
+                # "Tes ...?" question — the common ham-radio "just checking
+                # my radio works" convention — bypass the normal ! requirement
+                # below, but ONLY for these patterns, not any bang-less
+                # message. "test 123" (no ?) or "let's test this" do NOT match.
                 # Per-node opt-out via !senyap/!aktif — an opted-out node is
                 # treated exactly as if this weren't a magic word at all.
                 stripped_msg = message_string.strip()
-                is_test_question = bool(re.match(r'^(?:Test|test)\b.*\?$', stripped_msg))
+                is_test_question = bool(re.match(r'^(?:Test|test|Tes|tes)\b.*\?$', stripped_msg))
                 is_bare_magic_word = ((stripped_msg in magicword_pref.MAGIC_WORDS or is_test_question)
                                       and not magicword_pref.is_opted_out(message_from_id))
                 if messageTrap(message_string) or is_bare_magic_word:

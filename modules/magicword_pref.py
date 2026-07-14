@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 _PREF_FILE = "/opt/meshing-around/data/magicword_pref.json"
 
-# Exact match only: "Test" and "test", nothing else — "TEST", "test123",
-# "let's test this" do NOT match.
-MAGIC_WORDS = frozenset(("Test", "test"))
+# Exact match only: "Test"/"test" and the Indonesian spelling "Tes"/"tes",
+# nothing else — "TEST", "test123", "let's test this" do NOT match.
+MAGIC_WORDS = frozenset(("Test", "test", "Tes", "tes"))
 
 # Short on purpose — this used to be a 3-chunk essay explaining the whole
 # mechanism, which is both annoying over LoRa and unclear to anyone who
