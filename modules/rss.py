@@ -45,6 +45,14 @@ def get_rss_feed(msg):
                 feed_name = name
                 break
     else:
+        # A bare "!berita" defaults to the first feed, but "!berita <unknown>"
+        # should say so instead of silently serving the default topic.
+        words = msg_lower.split()
+        args = [w for w in words[1:] if w] if len(words) > 1 else []
+        if args and not args[0].startswith("?"):
+            return (f'📰 Topik "{args[0]}" tidak dikenal.\n'
+                    f"Pilihan: {', '.join(RSS_FEED_NAMES)}\n"
+                    f"Contoh: !berita teknologi")
         logger.debug(f"RSS: No feed name found in message '{msg}'. Using default feed.")
         feed_name = RSS_FEED_NAMES[0] if RSS_FEED_NAMES else "default"
 

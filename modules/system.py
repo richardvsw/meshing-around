@@ -1,7 +1,10 @@
 # helper functions and init for system related tasks
 # K7MHI Kelly Keeton 2024
 
+import threading
 import meshtastic.serial_interface #pip install meshtastic or use launch.sh for venv
+from meshtastic import portnums_pb2
+from meshtastic.protobuf import mesh_pb2
 import meshtastic.tcp_interface
 import meshtastic.ble_interface
 import time
@@ -168,14 +171,47 @@ if rssEnable or enable_headlines:
 from modules.bbm import get_bbm_prices
 from modules.kurs import get_kurs_rupiah
 from modules.fifa import get_fifa2026
-trap_list = trap_list + ("hargabbm", "bbmharga", "kursrupiah", "kurs", "fifa2026", "fifa", "gempa", "alarm", "p3k", "konversi", "morse")
+trap_list = trap_list + ("hargabbm", "bbmharga", "kursrupiah", "kurs", "fifa2026", "fifa", "gempa", "alarm", "p3k", "survival", "stat", "senyap", "aktif", "konversi", "morse", "darurat", "pesawat", "banjir", "bencana")
 
 # New commands: gempa, alarm, p3k, konversi, morse
 from modules.gempa import get_gempa
 from modules.alarm import get_alarm, ack_alarm
 from modules.p3k import get_p3k
+from modules.survival import get_survival
+from modules.statistik import get_statistik
+from modules.darurat import get_darurat as _get_darurat_base
+
+def get_darurat_with_location(nodeID, deviceID, message=None):
+    location = get_node_location(nodeID, deviceID)
+    gps_available = not (location[0] == latitudeValue and location[1] == longitudeValue)
+    return _get_darurat_base(message, location[0], location[1], gps_available=gps_available)
+
+from modules.pesawat import get_pesawat as _get_pesawat_base
+
+def get_pesawat_with_location(nodeID, deviceID, message=None):
+    location = get_node_location(nodeID, deviceID)
+    gps_available = not (location[0] == latitudeValue and location[1] == longitudeValue)
+    return _get_pesawat_base(message, location[0], location[1], gps_available=gps_available)
+
+from modules.banjir import get_banjir as _get_banjir_base
+
+def get_banjir_with_location(nodeID, deviceID, message=None):
+    location = get_node_location(nodeID, deviceID)
+    gps_available = not (location[0] == latitudeValue and location[1] == longitudeValue)
+    return _get_banjir_base(message, location[0], location[1], gps_available=gps_available)
+
+from modules.bencana import get_bencana
+
+def get_spbu_with_location(nodeID, deviceID, message=None):
+    location = get_node_location(nodeID, deviceID)
+    gps_available = not (location[0] == latitudeValue and location[1] == longitudeValue)
+    return _get_spbu_base(message, location[0], location[1], gps_available=gps_available)
 from modules.konversi import get_konversi
 from modules.morse import get_morse
+from modules.gunung import get_gunung
+from modules.libur import get_libur
+from modules.ringkasan import get_ringkasan
+trap_list = trap_list + ("gunung", "libur", "ringkasan")
 # LLM Configuration
 if llm_enabled:
     from modules.llm import * # from the spudgunman/meshing-around repo
@@ -780,10 +816,25 @@ def handleSentinelIgnore(nodeInt=1, nodeID=0, aor=False):
         sentryIgnoreList.remove(str(nodeID))
         logger.info(f"System: Removed {nodeID} from sentry ignore list")
 
+def _blen(s):
+    """UTF-8 byte length of string — use this everywhere chunk size is checked."""
+    return len(s.encode('utf-8'))
+
+# Bytes reserved for the "(i/n) " prefix labeled onto every chunk of a
+# multi-chunk message, so labeled chunks never exceed MESSAGE_CHUNK_SIZE.
+CHUNK_LABEL_RESERVE = 9
+# How long to wait for a chunk's delivery ack before sending the next chunk
+# anyway. Chunks are independent unordered packets on the mesh — without
+# this, chunk N+1 can be transmitted (and arrive) before chunk N finishes
+# retrying, scrambling the reassembled message on the receiving client.
+CHUNK_ACK_TIMEOUT = 10
+
 def messageChunker(message):
     message_list = []
     try:
-        if len(message) > MESSAGE_CHUNK_SIZE:
+        if _blen(message) > MESSAGE_CHUNK_SIZE:
+            # Reserve room for the "(i/n) " prefix labeled onto each chunk below.
+            limit = MESSAGE_CHUNK_SIZE - CHUNK_LABEL_RESERVE
             # Split the message into parts by new lines
             parts = message.split('\n')
             for part in parts:
@@ -791,73 +842,74 @@ def messageChunker(message):
                 # remove empty parts
                 if not part:
                     continue
-                # if part is under the MESSAGE_CHUNK_SIZE, add it to the list
-                if len(part) < MESSAGE_CHUNK_SIZE:
+                # if part fits in one chunk, add it directly
+                if _blen(part) <= limit:
                     message_list.append(part)
                 else:
-                    # split the part into chunks
+                    # split oversized part word-by-word
                     current_chunk = ''
-                    sentences = []
-                    sentence = ''
-                    for char in part:
-                        sentence += char
-                        # if char in '.!?':
-                        #     sentences.append(sentence.strip())
-                        #     sentence = ''
-                    if sentence:
-                        sentences.append(sentence.strip())
-
-                    for sentence in sentences:
-                        sentence = sentence.replace('  ', ' ')
-                        # remove empty sentences
-                        if not sentence:
+                    for word in part.split(' '):
+                        if not word:
                             continue
-                        # remove junk sentences and append to the previous sentence this may exceed the MESSAGE_CHUNK_SIZE by 3char
-                        if len(sentence) < 4:
-                            if current_chunk:
-                                current_chunk += sentence
-                            else:
-                                current_chunk = sentence
-                            continue
-
-                        # if sentence is too long, split it by words
-                        if len(current_chunk) + len(sentence) > MESSAGE_CHUNK_SIZE:
-                            if current_chunk:
-                                message_list.append(current_chunk)
-                            current_chunk = sentence
+                        candidate = (current_chunk + ' ' + word).strip() if current_chunk else word
+                        if _blen(candidate) <= limit:
+                            current_chunk = candidate
                         else:
                             if current_chunk:
-                                current_chunk += ' ' + sentence
-                            else:
-                                current_chunk = sentence
+                                message_list.append(current_chunk)
+                            # word itself may exceed limit — hard-split by bytes
+                            current_chunk = word
+                            while _blen(current_chunk) > limit:
+                                # split at last space before byte limit
+                                encoded = current_chunk.encode('utf-8')
+                                split_at = limit
+                                while split_at > 0 and (encoded[split_at] & 0xC0) == 0x80:
+                                    split_at -= 1
+                                # walk back to last space so we don't cut mid-word
+                                sp = encoded.rfind(b' ', 0, split_at)
+                                if sp > 0:
+                                    split_at = sp
+                                message_list.append(encoded[:split_at].decode('utf-8').rstrip())
+                                current_chunk = encoded[split_at:].decode('utf-8').strip()
                     if current_chunk:
                         message_list.append(current_chunk)
 
-            # Consolidate any adjacent messages that can fit in a single chunk.
+            # Consolidate adjacent chunks that fit together
             idx = 0
             while idx < len(message_list) - 1:
-                if len(message_list[idx]) + len(message_list[idx+1]) < MESSAGE_CHUNK_SIZE:
-                    message_list[idx] += '\n' + message_list[idx+1]
+                combined = message_list[idx] + '\n' + message_list[idx+1]
+                if _blen(combined) <= limit:
+                    message_list[idx] = combined
                     del message_list[idx+1]
                 else:
                     idx += 1
 
-            # Ensure no chunk exceeds MESSAGE_CHUNK_SIZE
+            # Final safety pass — hard-split anything still too large, always at word boundary
             final_message_list = []
             for chunk in message_list:
-                while len(chunk) > MESSAGE_CHUNK_SIZE:
-                    # Find the last space within the chunk size limit
-                    split_index = chunk.rfind(' ', 0, MESSAGE_CHUNK_SIZE)
-                    if split_index == -1:
-                        split_index = MESSAGE_CHUNK_SIZE
-                    final_message_list.append(chunk[:split_index])
-                    chunk = chunk[split_index:].strip()
+                while _blen(chunk) > limit:
+                    encoded = chunk.encode('utf-8')
+                    split_at = limit
+                    while split_at > 0 and (encoded[split_at] & 0xC0) == 0x80:
+                        split_at -= 1
+                    # prefer splitting at a space
+                    sp = encoded.rfind(b' ', 0, split_at)
+                    if sp > 0:
+                        split_at = sp
+                    final_message_list.append(encoded[:split_at].decode('utf-8').rstrip())
+                    chunk = encoded[split_at:].decode('utf-8').strip()
                 if chunk:
                     final_message_list.append(chunk)
 
+            # Label each chunk with its position, e.g. "(2/3) ...", so the
+            # reader can reassemble the right order even when the mesh
+            # delivers independent packets out of sequence.
+            num_chunks = len(final_message_list)
+            if num_chunks > 1:
+                final_message_list = [f"({i+1}/{num_chunks}) {c}" for i, c in enumerate(final_message_list)]
+
             # Calculate the total length of the message
             total_length = sum(len(chunk) for chunk in final_message_list)
-            num_chunks = len(final_message_list)
             logger.debug(f"System: Splitting #chunks: {num_chunks}, Total length: {total_length}")
             return final_message_list
 
@@ -874,6 +926,7 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
 
     try:
         def _send_with_reply(**kwargs):
+            onResponse = kwargs.pop('onResponse', None)
             # For threaded replies, send as DATA payload to match Meshtastic inline-reply behavior. no API call today.
             if reply_id is not None:
                 text_payload = kwargs.pop('text', '')
@@ -890,9 +943,28 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
                 }
                 if kwargs.get('destinationId'):
                     data_kwargs['destinationId'] = kwargs.get('destinationId')
+                if onResponse is not None:
+                    data_kwargs['onResponse'] = onResponse
+                    # sendText's onResponse only fires for app-level responses;
+                    # a plain delivery ACK needs ackPermitted=True to trigger it.
+                    data_kwargs['onResponseAckPermitted'] = True
                 # send the data payload with the replyId for threading
                 return interface.sendData(raw_payload, replyId=reply_id, **data_kwargs)
-            # Otherwise, send as normal text message
+            # Otherwise, send as normal text message. sendText() doesn't expose
+            # onResponseAckPermitted, so go through sendData directly when we
+            # need the callback to fire on a plain ACK (the common case here).
+            if onResponse is not None:
+                text_payload = kwargs.pop('text', '')
+                raw_payload = text_payload.encode('utf-8') if isinstance(text_payload, str) else text_payload
+                return interface.sendData(
+                    raw_payload,
+                    destinationId=kwargs.get('destinationId', meshtastic.BROADCAST_ADDR),
+                    portNum=portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+                    wantAck=kwargs.get('wantAck', False),
+                    onResponse=onResponse,
+                    onResponseAckPermitted=True,
+                    channelIndex=kwargs.get('channelIndex', ch),
+                )
             return interface.sendText(**kwargs)
 
         # Force chunking and log if message exceeds maxBuffer
@@ -909,13 +981,18 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
             # Send the message to the channel or DM
             total_length = sum(len(chunk) for chunk in message_list)
             num_chunks = len(message_list)
-            for m in message_list:
-                chunkOf = f"{message_list.index(m)+1}/{num_chunks}"
+            for idx, m in enumerate(message_list):
+                chunkOf = f"{idx+1}/{num_chunks}"
+                ack_event = threading.Event()
+
+                def _on_chunk_ack(packet, _event=ack_event):
+                    _event.set()
+
                 if nodeid == 0:
                     # Send to channel
                     if wantAck:
                         logger.info(f"Device:{nodeInt} Channel:{ch} " + CustomFormatter.red + f"req.ACK " + f"Chunker{chunkOf} SendingChannel: " + CustomFormatter.white + m.replace('\n', ' '))
-                        _send_with_reply(text=m, channelIndex=ch, wantAck=True)
+                        _send_with_reply(text=m, channelIndex=ch, wantAck=True, onResponse=_on_chunk_ack)
                     else:
                         logger.info(f"Device:{nodeInt} Channel:{ch} " + CustomFormatter.red + f"Chunker{chunkOf} SendingChannel: " + CustomFormatter.white + m.replace('\n', ' '))
                         _send_with_reply(text=m, channelIndex=ch)
@@ -924,17 +1001,27 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
                     if wantAck:
                         logger.info(f"Device:{nodeInt} " + CustomFormatter.red + f"req.ACK " + f"Chunker{chunkOf} Sending DM: " + CustomFormatter.white + m.replace('\n', ' ') + CustomFormatter.purple +\
                                  " To: " + CustomFormatter.white + f"{get_name_from_number(nodeid, 'long', nodeInt)}")
-                        _send_with_reply(text=m, channelIndex=ch, destinationId=nodeid, wantAck=True)
+                        _send_with_reply(text=m, channelIndex=ch, destinationId=nodeid, wantAck=True, onResponse=_on_chunk_ack)
                     else:
                         logger.info(f"Device:{nodeInt} " + CustomFormatter.red + f"Chunker{chunkOf} Sending DM: " + CustomFormatter.white + m.replace('\n', ' ') + CustomFormatter.purple +\
                                     " To: " + CustomFormatter.white + f"{get_name_from_number(nodeid, 'long', nodeInt)}")
                         _send_with_reply(text=m, channelIndex=ch, destinationId=nodeid)
 
                 # Throttle the message sending to prevent spamming the device
-                if (message_list.index(m)+1) % 4 == 0:
+                if (idx+1) % 4 == 0:
                     time.sleep(responseDelay + 1)
-                    if (message_list.index(m)+1) % 5 == 0:
+                    if (idx+1) % 5 == 0:
                         logger.warning(f"System: throttling rate Interface{nodeInt} on {chunkOf}")
+
+                is_last_chunk = (idx == num_chunks - 1)
+                if wantAck and not is_last_chunk:
+                    # Hold off on the next chunk until this one is actually
+                    # delivered (or we time out) — chunks are independent,
+                    # unordered packets on the mesh, so sending the next one
+                    # before this one lands is what scrambles the reassembled
+                    # message on the receiving client.
+                    if not ack_event.wait(timeout=CHUNK_ACK_TIMEOUT):
+                        logger.warning(f"System: Chunker{chunkOf} ack timed out after {CHUNK_ACK_TIMEOUT}s, sending next chunk anyway")
 
                 # wait an amount of time between sending each split message
                 time.sleep(splitDelay)
@@ -962,6 +1049,32 @@ def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_
         return True
     except Exception as e:
         logger.error(f"System: Exception during send_message: {e} (message length: {len(message)})")
+        return False
+
+def send_reaction(emoji_char, reply_to_id, nodeid=0, nodeInt=1, ch=0):
+    """Send a Meshtastic emoji tapback reaction (not a text message) to
+    reply_to_id — the packet id of the message being reacted to.
+
+    sendText()/sendData() don't expose the protocol's `emoji` field, so this
+    builds the MeshPacket manually the same way MeshInterface.sendData()
+    does internally, with decoded.emoji=1 and decoded.reply_id set. nodeid=0
+    sends to a channel (like send_message's own convention); a specific
+    nodeid sends a DM reaction."""
+    interface = globals()[f'interface{nodeInt}']
+    try:
+        meshPacket = mesh_pb2.MeshPacket()
+        meshPacket.channel = ch
+        meshPacket.decoded.payload = emoji_char.encode('utf-8')
+        meshPacket.decoded.portnum = portnums_pb2.PortNum.TEXT_MESSAGE_APP
+        meshPacket.decoded.emoji = 1
+        meshPacket.decoded.reply_id = reply_to_id
+        meshPacket.id = interface._generatePacketId()
+        destinationId = nodeid if nodeid else meshtastic.BROADCAST_ADDR
+        interface._sendPacket(meshPacket, destinationId)
+        logger.debug(f"System: Sent reaction {emoji_char} to reply_id {reply_to_id} via Device{nodeInt}")
+        return True
+    except Exception as e:
+        logger.error(f"System: Exception during send_reaction: {e}")
         return False
 
 def send_raw_bytes(nodeid, raw_bytes, nodeInt=1, channel=0, portnum=256, want_ack=True, reply_id=None):
@@ -1613,7 +1726,9 @@ def consumeMetadata(packet, rxNode=0, channel=-1):
     if packet_type == 'TELEMETRY_APP':
         if debugMetadata and 'TELEMETRY_APP' not in metadataFilter:
             print(f"DEBUG TELEMETRY_APP: {packet}\n\n")
-        telemetry_packet = packet['decoded']['telemetry']
+        telemetry_packet = packet.get('decoded', {}).get('telemetry')
+        if not telemetry_packet:
+            return
         # Track device metrics (battery, uptime)
         if telemetry_packet.get('deviceMetrics'):
             deviceMetrics = telemetry_packet['deviceMetrics']

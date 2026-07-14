@@ -7,9 +7,9 @@ from datetime import datetime, timezone, timedelta
 logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard"
-_CACHE = {}       # date_str -> (data, fetch_time)
-_CACHE_TTL_LIVE = 120    # 2 menit saat ada pertandingan live
-_CACHE_TTL_STATIC = 1800  # 30 menit untuk data lama
+_CACHE = {}
+_CACHE_TTL_LIVE = 120
+_CACHE_TTL_STATIC = 1800
 
 WIB = timezone(timedelta(hours=7))
 
@@ -35,13 +35,77 @@ _LIVE_STATUSES = {
 _DONE_STATUSES = {"STATUS_FINAL", "STATUS_FULL_TIME"}
 
 
+def _flag(iso2):
+    """Convert ISO 3166-1 alpha-2 code to flag emoji."""
+    return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in iso2.upper())
+
+
+# ESPN abbr -> (display name, ISO 3166-1 alpha-2)
+_TEAMS = {
+    "ALG": ("Aljazair",        "DZ"),
+    "ARG": ("Argentina",       "AR"),
+    "AUS": ("Australia",       "AU"),
+    "AUT": ("Austria",         "AT"),
+    "BEL": ("Belgia",          "BE"),
+    "BIH": ("Bosnia-Herz.",    "BA"),
+    "BRA": ("Brasil",          "BR"),
+    "CAN": ("Kanada",          "CA"),
+    "CIV": ("Pantai Gading",   "CI"),
+    "COD": ("Kongo DR",        "CD"),
+    "COL": ("Kolombia",        "CO"),
+    "CPV": ("Tanjung Verde",   "CV"),
+    "CRO": ("Kroasia",         "HR"),
+    "CUW": ("Curaçao",         "CW"),
+    "CZE": ("Ceko",            "CZ"),
+    "ECU": ("Ekuador",         "EC"),
+    "EGY": ("Mesir",           "EG"),
+    "ENG": ("Inggris",         "GB"),
+    "ESP": ("Spanyol",         "ES"),
+    "FRA": ("Prancis",         "FR"),
+    "GER": ("Jerman",          "DE"),
+    "GHA": ("Ghana",           "GH"),
+    "HAI": ("Haiti",           "HT"),
+    "IRN": ("Iran",            "IR"),
+    "IRQ": ("Irak",            "IQ"),
+    "JOR": ("Jordania",        "JO"),
+    "JPN": ("Jepang",          "JP"),
+    "KOR": ("Korea Selatan",   "KR"),
+    "KSA": ("Arab Saudi",      "SA"),
+    "MAR": ("Maroko",          "MA"),
+    "MEX": ("Meksiko",         "MX"),
+    "NED": ("Belanda",         "NL"),
+    "NOR": ("Norwegia",        "NO"),
+    "NZL": ("Selandia Baru",   "NZ"),
+    "PAN": ("Panama",          "PA"),
+    "PAR": ("Paraguay",        "PY"),
+    "POR": ("Portugal",        "PT"),
+    "QAT": ("Qatar",           "QA"),
+    "RSA": ("Afrika Selatan",  "ZA"),
+    "SCO": ("Skotlandia",      "GB"),
+    "SEN": ("Senegal",         "SN"),
+    "SUI": ("Swiss",           "CH"),
+    "SWE": ("Swedia",          "SE"),
+    "TUN": ("Tunisia",         "TN"),
+    "TUR": ("Türkiye",         "TR"),
+    "URU": ("Uruguay",         "UY"),
+    "USA": ("Amerika Serikat", "US"),
+    "UZB": ("Uzbekistan",      "UZ"),
+}
+
+
+def _team_label(abbr):
+    """Return 'FLAG Nama' for a team abbreviation."""
+    if abbr in _TEAMS:
+        name, iso2 = _TEAMS[abbr]
+        return f"{_flag(iso2)} {name}"
+    return abbr
+
+
 def _fetch_date(date_str):
-    """Fetch events for a YYYYMMDD date string, with per-date caching."""
     cached = _CACHE.get(date_str)
     now = time.time()
     if cached:
         data, fetch_time = cached
-        # use shorter TTL if any event was live
         has_live = any(
             e.get("status", {}).get("type", {}).get("name") in _LIVE_STATUSES
             for e in data.get("events", [])
@@ -50,12 +114,30 @@ def _fetch_date(date_str):
         if (now - fetch_time) < ttl:
             return data
 
-    url = f"{_BASE_URL}?dates={date_str}"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    r = urllib.request.urlopen(req, timeout=10)
-    data = json.loads(r.read())
-    _CACHE[date_str] = (data, now)
-    return data
+    from modules.cache_status import record_status
+    try:
+        url = f"{_BASE_URL}?dates={date_str}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        r = urllib.request.urlopen(req, timeout=10)
+        data = json.loads(r.read())
+        _CACHE[date_str] = (data, now)
+        record_status("fifa2026", ok=True)
+        return data
+    except Exception as e:
+        record_status("fifa2026", ok=False, error=e)
+        raise
+
+
+def refresh():
+    """Force a fresh fetch for today+yesterday (same dates get_fifa2026 uses),
+    bypassing TTL — for external manual-refresh triggers."""
+    now = datetime.now(WIB)
+    today_str = now.strftime("%Y%m%d")
+    yesterday_str = (now - timedelta(days=1)).strftime("%Y%m%d")
+    _CACHE.pop(today_str, None)
+    _CACHE.pop(yesterday_str, None)
+    _fetch_date(yesterday_str)
+    return _fetch_date(today_str)
 
 
 def _fmt_wib(dt):
@@ -64,14 +146,19 @@ def _fmt_wib(dt):
     return f"{hari} {dt.day:02d} {bln} {dt.hour:02d}:{dt.minute:02d}"
 
 
+def _get_teams(comps):
+    teams = {t["homeAway"]: t for t in comps.get("competitors", [])}
+    return teams.get("home", {}), teams.get("away", {})
+
+
 def _format_event(e):
     comps = e.get("competitions", [{}])[0]
-    teams = {t["homeAway"]: t for t in comps.get("competitors", [])}
-    home = teams.get("home", {})
-    away = teams.get("away", {})
+    home, away = _get_teams(comps)
 
-    hn = home.get("team", {}).get("abbreviation", "?")
-    an = away.get("team", {}).get("abbreviation", "?")
+    ha = home.get("team", {}).get("abbreviation", "?")
+    aa = away.get("team", {}).get("abbreviation", "?")
+    hl = _team_label(ha)
+    al = _team_label(aa)
     score_h = home.get("score", "")
     score_a = away.get("score", "")
 
@@ -81,25 +168,40 @@ def _format_event(e):
 
     dt = datetime.fromisoformat(e["date"].replace("Z", "+00:00")).astimezone(WIB)
     jam = _fmt_wib(dt)
-
     group = comps.get("altGameNote", "").replace("FIFA World Cup, ", "")
 
     if status_name == "STATUS_SCHEDULED":
-        return f"{jam} WIB | {hn} vs {an} | {group}"
+        return f"{jam} WIB | {hl} vs {al} ({group})"
     elif status_name in _DONE_STATUSES:
-        if home.get("winner"):
-            skor = f"**{score_h}**-{score_a}"
-        elif away.get("winner"):
-            skor = f"{score_h}-**{score_a}**"
-        else:
-            skor = f"{score_h}-{score_a}"
-        return f"{hn} {score_h}-{score_a} {an} | {group}"
+        return f"{hl} {score_h}–{score_a} {al}  ({group})"
     elif status_name in _LIVE_STATUSES:
         label = _STATUS_MAP.get(status_name, "Live")
-        return f"🔴 {hn} {score_h}-{score_a} {an} ({clock}) | {group}"
+        return f"🔴 {hl} {score_h}–{score_a} {al} [{clock}]  ({group})"
     else:
         label = _STATUS_MAP.get(status_name, status_type.get("description", ""))
-        return f"{jam} WIB | {hn} {score_h}-{score_a} {an} [{label}] | {group}"
+        return f"{jam} WIB | {hl} {score_h}–{score_a} {al} [{label}]  ({group})"
+
+
+def _yesterday_summary(events):
+    """One-line summary of yesterday's results."""
+    done = [e for e in events
+            if e.get("status", {}).get("type", {}).get("name") in _DONE_STATUSES]
+    if not done:
+        return None
+
+    lines = ["📋 Hasil kemarin:"]
+    for e in done:
+        comps = e.get("competitions", [{}])[0]
+        home, away = _get_teams(comps)
+        ha = home.get("team", {}).get("abbreviation", "?")
+        aa = away.get("team", {}).get("abbreviation", "?")
+        score_h = home.get("score", "")
+        score_a = away.get("score", "")
+        group = comps.get("altGameNote", "").replace("FIFA World Cup, ", "")
+        hl = _team_label(ha)
+        al = _team_label(aa)
+        lines.append(f"  {hl} {score_h}–{score_a} {al}  ({group})")
+    return "\n".join(lines)
 
 
 def get_fifa2026(message):
@@ -114,37 +216,45 @@ def get_fifa2026(message):
         logger.error("FIFA fetch error: %s", e)
         return "❌ Gagal mengambil data FIFA 2026. Coba lagi nanti."
 
-    all_events = data_yesterday.get("events", []) + data_today.get("events", [])
-    if not all_events:
-        return "⚽ Tidak ada pertandingan FIFA 2026 dalam 24 jam terakhir."
+    today_events = data_today.get("events", [])
+    yesterday_events = data_yesterday.get("events", [])
 
     tgl = f"{now.day:02d}/{now.month:02d}"
-    lines = [f"⚽ FIFA World Cup 2026 — {tgl}"]
+    sections = [f"⚽ FIFA World Cup 2026 — {tgl}"]
 
+    # Yesterday summary
+    summary = _yesterday_summary(yesterday_events)
+    if summary:
+        sections.append(summary)
+
+    # Today: categorise
     live, done, upcoming = [], [], []
-    for e in all_events:
-        status_name = e.get("status", {}).get("type", {}).get("name", "")
-        if status_name in _LIVE_STATUSES:
+    for e in today_events:
+        sn = e.get("status", {}).get("type", {}).get("name", "")
+        if sn in _LIVE_STATUSES:
             live.append(e)
-        elif status_name in _DONE_STATUSES:
+        elif sn in _DONE_STATUSES:
             done.append(e)
         else:
             upcoming.append(e)
 
     if live:
-        lines.append("🔴 LIVE:")
+        sections.append("🔴 LIVE:")
         for e in live:
-            lines.append("  " + _format_event(e))
+            sections.append("  " + _format_event(e))
 
     if done:
-        lines.append("✅ Hasil:")
+        sections.append("✅ Selesai hari ini:")
         for e in done:
-            lines.append("  " + _format_event(e))
+            sections.append("  " + _format_event(e))
 
     if upcoming:
-        lines.append("🕐 Jadwal:")
+        sections.append("🕐 Jadwal hari ini:")
         for e in upcoming:
-            lines.append("  " + _format_event(e))
+            sections.append("  " + _format_event(e))
 
-    lines.append("📡 espn.com")
-    return "\n".join(lines)
+    if not (live or done or upcoming):
+        sections.append("Tidak ada pertandingan hari ini.")
+
+    sections.append("📡 espn.com")
+    return "\n".join(sections)

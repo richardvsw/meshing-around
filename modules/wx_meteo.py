@@ -39,7 +39,7 @@ def get_wx_meteo(lat=0, lon=0, unit=0):
 		weather_data = get_weather_data(url, params)
 	except Exception as e:
 		logger.error(f"Error fetching meteo weather data: {e}")
-		return ERROR_FETCHING_DATA
+		return "❌ Gagal mengambil data cuaca. Coba lagi nanti."
 
 	# Check if we got a response
 	try:
@@ -61,7 +61,7 @@ def get_wx_meteo(lat=0, lon=0, unit=0):
 		daily_wind_direction_10m_dominant = daily['wind_direction_10m_dominant']
 	except Exception as e:
 		logger.error(f"Error processing meteo weather data: {e}")
-		return ERROR_FETCHING_DATA
+		return "❌ Gagal mengambil data cuaca. Coba lagi nanti."
 
 	# convert wind value to cardinal directions
 	for value in daily_wind_direction_10m_dominant:
@@ -218,7 +218,7 @@ def get_flood_openmeteo(lat=0, lon=0):
 		flood_data = get_weather_data(url, params)
 	except Exception as e:
 		logger.error(f"Error fetching meteo flood data: {e}")
-		return ERROR_FETCHING_DATA
+		return "❌ Gagal mengambil data debit sungai. Coba lagi nanti."
 	
 	# Check if we got a response
 	try:
@@ -235,10 +235,25 @@ def get_flood_openmeteo(lat=0, lon=0):
 
 	except Exception as e:
 		logger.error(f"Error processing meteo flood data: {e}")
-		return ERROR_FETCHING_DATA
+		return "❌ Gagal mengambil data debit sungai. Coba lagi nanti."
 	
-	# create a flood report
-	flood_report = ""
-	flood_report += "Debit sungai: " + str(daily_river_discharge) + "m3/s"
+	if not daily_river_discharge or all(v is None for v in daily_river_discharge):
+		return "🌊 Gak ada data sungai di lokasi ini (mungkin jauh dari aliran sungai besar)."
 
-	return flood_report
+	# create a flood report — one line per forecast day, flagged if discharge
+	# is trending up sharply (naive proxy for rising flood risk)
+	day_labels = ["Hari ini", "Besok", "Lusa"]
+	lines = ["🌊 Debit Sungai Terdekat"]
+	prev = None
+	for i, discharge in enumerate(daily_river_discharge):
+		label = day_labels[i] if i < len(day_labels) else f"+{i}d"
+		if discharge is None:
+			continue
+		flag = ""
+		if prev is not None and prev > 0 and discharge > prev * 1.3:
+			flag = " ⚠️ naik tajam"
+		lines.append(f"{label}: {discharge:.1f} m3/s{flag}")
+		prev = discharge
+	lines.append("📡 open-meteo.com (flood-api)")
+
+	return "\n".join(lines)

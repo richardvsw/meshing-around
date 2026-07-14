@@ -29,3 +29,5 @@ venv/
 
 # Python cache
 __pycache__/
+data/osm_tiles/
+data/device_icons/
